@@ -146,8 +146,18 @@ bind = $mainMod, Y, exec, friendly
 `friendly` doesn't transcribe — it takes whatever you type into its text area. Pair it
 with any tool that types into the focused window, e.g.
 [Handy](https://github.com/cjpais/Handy) or
-[nerd-dictation](https://github.com/ideasman42/nerd-dictation): open `friendly`, trigger
-your dictation, and the text lands in the focused box.
+[nerd-dictation](https://github.com/ideasman42/nerd-dictation).
+
+To **auto-start dictation when the box opens** (so one hotkey does both), pass
+`--on-open CMD` — it runs `CMD` once the window is focused. With Handy on Sway:
+
+```
+bindsym $mod+y exec /usr/bin/friendly --on-open 'handy --toggle-transcription'
+```
+
+Now `$mod+y` opens the box and starts recording; speak, stop your dictation (Handy
+types the text into the box), then `Enter`. You can also set it globally with the
+`FRIENDLY_ON_OPEN` environment variable instead of the flag.
 
 ## Usage
 
@@ -172,6 +182,7 @@ echo "mon texte" | friendly -s Concis -n     # from a pipe, result on stdout
 | --- | --- |
 | `-s, --style NAME` | use a preset by name (skip the menu) |
 | `-i, --instruction TEXT` | free-form tone instruction (skip the menu) |
+| `-o, --on-open CMD` | run `CMD` when the box opens (e.g. start dictation); env: `FRIENDLY_ON_OPEN` |
 | `-n, --no-copy` | print the result to stdout instead of copying |
 | `-h, --help` | help |
 

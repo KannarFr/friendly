@@ -79,15 +79,21 @@ spotlight_entry() {
 # runtime (ex. layer-shell non supporté) → on retombe sur wofi.
 spotlight_textarea() {
   local prompt="$1" rc
+  # ON_OPEN : commande lancée quand la fenêtre est ouverte/focalisée (ex. dictée).
+  local on_open_args=()
+  [ -n "$ON_OPEN" ] && on_open_args=(--on-open "$ON_OPEN")
   if [ -n "$INPUT_PY" ] && have python3 \
      && python3 -c 'import gi; gi.require_version("GtkLayerShell","0.1")' 2>/dev/null
   then
-    if python3 -B "$INPUT_PY" "$prompt"; then rc=0; else rc=$?; fi
+    if python3 -B "$INPUT_PY" "${on_open_args[@]}" "$prompt"; then rc=0; else rc=$?; fi
     case "$rc" in
       0|1) return "$rc" ;;          # validé / annulé : propage tel quel
       *)   spotlight_entry "$prompt" ;;  # échec runtime : repli wofi
     esac
   else
+    # Repli wofi (pas de zone GTK) : on lance quand même la dictée, en différé
+    # le temps que wofi prenne le focus clavier.
+    [ -n "$ON_OPEN" ] && ( sleep 0.2; sh -c "$ON_OPEN" ) >/dev/null 2>&1 &
     spotlight_entry "$prompt"
   fi
 }
@@ -231,6 +237,8 @@ $APP — réécrit un message en appliquant un style, via le CLI claude.
 Usage : friendly [options] [texte…]
   -s, --style NOM         Utilise un preset par son nom (sinon menu interactif).
   -i, --instruction TEXTE Instruction de style libre (court-circuite le menu).
+  -o, --on-open CMD       Lance CMD quand la zone de saisie s'ouvre/focalise
+                          (ex. démarrer une dictée). Défaut : \$FRIENDLY_ON_OPEN.
   -n, --no-copy           Affiche le résultat sur stdout au lieu de copier.
   -h, --help              Cette aide.
 
@@ -244,6 +252,7 @@ EOF
 OVERRIDE_INSTRUCTION=""
 OVERRIDE_INSTRUCTION_SET=0
 OVERRIDE_STYLE=""
+ON_OPEN="${FRIENDLY_ON_OPEN:-}"   # commande lancée à l'ouverture (ex. dictée)
 NO_COPY=0
 ARGS=()
 # exige un argument pour les options qui en attendent un (sinon `shift 2`
@@ -253,6 +262,7 @@ while [ "$#" -gt 0 ]; do
   case "$1" in
     -s|--style)       need_arg "$@"; OVERRIDE_STYLE="$2"; shift 2 ;;
     -i|--instruction) need_arg "$@"; OVERRIDE_INSTRUCTION="$2"; OVERRIDE_INSTRUCTION_SET=1; shift 2 ;;
+    -o|--on-open)     need_arg "$@"; ON_OPEN="$2"; shift 2 ;;
     -n|--no-copy)     NO_COPY=1; shift ;;
     -h|--help)        usage; exit 0 ;;
     --)               shift; ARGS+=("$@"); break ;;

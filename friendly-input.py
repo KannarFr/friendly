@@ -1,19 +1,34 @@
 #!/usr/bin/env python3
 """friendly — zone de texte multiligne centrée (overlay layer-shell), look Spotlight.
 
-Usage : friendly-input.py [invite]
+Usage : friendly-input.py [--on-open CMD] [invite]
   Entrée        valide (imprime le texte sur stdout, code 0)
   Maj+Entrée    nouvelle ligne
   Échap         annule (rien sur stdout, code 1)
+  --on-open CMD lance CMD (shell) une fois la fenêtre affichée et focalisée
+                — ex. démarrer une dictée qui tape dans le champ.
 """
+import subprocess
 import sys
 import gi
 
 gi.require_version("Gtk", "3.0")
 gi.require_version("GtkLayerShell", "0.1")
-from gi.repository import Gtk, Gdk, GtkLayerShell  # noqa: E402
+from gi.repository import GLib, Gtk, Gdk, GtkLayerShell  # noqa: E402
 
-PROMPT = sys.argv[1] if len(sys.argv) > 1 else "Dicte ton message"
+# Parse argv : --on-open CMD + une invite positionnelle.
+_args = sys.argv[1:]
+ON_OPEN = ""
+_rest = []
+_i = 0
+while _i < len(_args):
+    if _args[_i] == "--on-open" and _i + 1 < len(_args):
+        ON_OPEN = _args[_i + 1]
+        _i += 2
+    else:
+        _rest.append(_args[_i])
+        _i += 1
+PROMPT = _rest[0] if _rest else "Dicte ton message"
 
 CSS = b"""
 window { background-color: rgba(0,0,0,0);
@@ -105,6 +120,19 @@ def main():
     win.connect("destroy", Gtk.main_quit)
     win.show_all()
     view.grab_focus()
+
+    # Une fois la fenêtre mappée/focalisée, lance la commande on-open (ex. la
+    # dictée). Un court délai laisse le compositeur donner le focus clavier à
+    # l'overlay, pour que la frappe synthétique atterrisse bien dans le champ.
+    if ON_OPEN:
+        def _fire_on_open():
+            try:
+                subprocess.Popen(ON_OPEN, shell=True, start_new_session=True)
+            except Exception:
+                pass
+            return False  # one-shot
+        GLib.timeout_add(150, _fire_on_open)
+
     Gtk.main()
 
     if result["text"] is None:

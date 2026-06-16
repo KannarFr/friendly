@@ -25,11 +25,6 @@ Arch + Sway.
   <em>One hotkey: the box opens and dictation auto-starts; speak, pick a tone, paste the rewrite.</em>
 </p>
 
-<p align="center">
-  <img src="docs/screenshot.png" width="49%" alt="text area" />
-  <img src="docs/styles.png" width="49%" alt="style menu" />
-</p>
-
 ## Why
 
 You dictate a quick, messy message with your voice — *"yo can we push the call to 3pm, thx"* —
@@ -178,7 +173,7 @@ friendly -i "a very formal tone" "my text"   # free-form instruction
 echo "mon texte" | friendly -s Concis -n     # from a pipe, result on stdout
 ```
 
-> The UI strings and the default presets ship in **French** (see the screenshots).
+> The UI strings and the default presets ship in **French** (see the demo above).
 > Everything is editable — rename/translate the presets in `presets.conf`.
 
 | Flag | Meaning |

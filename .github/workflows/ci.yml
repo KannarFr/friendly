@@ -31,8 +31,8 @@ jobs:
       - name: Validate desktop entry
         run: desktop-file-validate friendly.desktop
 
-  release:
-    name: release + AUR
+  gh-release:
+    name: GitHub Release
     if: startsWith(github.ref, 'refs/tags/')
     needs: lint
     runs-on: ubuntu-24.04
@@ -40,13 +40,22 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v5
-
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes \
             || gh release edit "$GITHUB_REF_NAME" --generate-notes
+
+  aur:
+    name: publish to AUR
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: gh-release
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
 
       # Mirror the release into the AUR `friendly` package. The deploy action runs
       # in an Arch container, runs updpkgsums against the GitHub source tarball,
@@ -97,7 +106,7 @@ jobs:
   deb:
     name: build .deb (Debian/Ubuntu)
     if: startsWith(github.ref, 'refs/tags/')
-    needs: release
+    needs: gh-release
     runs-on: ubuntu-24.04
     permissions:
       contents: write

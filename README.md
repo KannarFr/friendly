@@ -12,9 +12,9 @@ tone — professional, kind, concise… — using [Claude Code](https://www.anth
 Arch + Sway.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![AUR friendly](https://img.shields.io/aur/version/friendly?logo=archlinux&logoColor=white&label=AUR%20friendly&color=1793d1)](https://aur.archlinux.org/packages/friendly)
-[![AUR friendly-git](https://img.shields.io/aur/version/friendly-git?logo=archlinux&logoColor=white&label=AUR%20friendly-git&color=1793d1)](https://aur.archlinux.org/packages/friendly-git)
-[![AUR votes](https://img.shields.io/aur/votes/friendly?logo=archlinux&logoColor=white&label=votes&color=1793d1)](https://aur.archlinux.org/packages/friendly)
+[![AUR friendly](https://img.shields.io/aur/version/friendly?logo=archlinux&logoColor=white&label=AUR%20friendly&color=1793d1&cacheSeconds=3600)](https://aur.archlinux.org/packages/friendly)
+[![AUR friendly-git](https://img.shields.io/aur/version/friendly-git?logo=archlinux&logoColor=white&label=AUR%20friendly-git&color=1793d1&cacheSeconds=3600)](https://aur.archlinux.org/packages/friendly-git)
+[![AUR votes](https://img.shields.io/aur/votes/friendly?logo=archlinux&logoColor=white&label=votes&color=1793d1&cacheSeconds=3600)](https://aur.archlinux.org/packages/friendly)
 ![Wayland](https://img.shields.io/badge/Wayland-wlroots%2Fsway-success)
 
 </div>

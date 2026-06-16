@@ -131,7 +131,7 @@ def main():
             except Exception:
                 pass
             return False  # one-shot
-        GLib.timeout_add(150, _fire_on_open)
+        GLib.timeout_add(250, _fire_on_open)
 
     Gtk.main()
 

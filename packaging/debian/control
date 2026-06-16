@@ -1,0 +1,29 @@
+Source: friendly
+Section: utils
+Priority: optional
+Maintainer: KannarFr <kannarfr@gmail.com>
+Build-Depends: debhelper-compat (= 13)
+Standards-Version: 4.6.2
+Homepage: https://github.com/KannarFr/friendly
+Rules-Requires-Root: no
+
+Package: friendly
+Architecture: all
+Depends: ${misc:Depends},
+         python3,
+         python3-gi,
+         gir1.2-gtk-3.0,
+         gir1.2-gtklayershell-0.1,
+         wl-clipboard
+Recommends: wofi,
+            libnotify-bin
+Suggests: rofi,
+          zenity
+Description: Spotlight-style tone-rewrite overlay (via Claude Code)
+ friendly opens a centered text area you dictate or type into, lets you pick a
+ tone (professional, kind, concise...), rewrites the message with Claude Code
+ (claude -p), and copies the result to the clipboard. Built for a Wayland voice
+ dictation workflow (wlroots / Sway).
+ .
+ The "claude" CLI (Claude Code) is required at runtime and is not packaged in
+ Debian/Ubuntu; install it with: npm install -g @anthropic-ai/claude-code

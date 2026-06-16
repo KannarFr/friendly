@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0.4" y2="1">
+      <stop offset="0" stop-color="#6d7bff"/>
+      <stop offset="1" stop-color="#9b6dff"/>
+    </linearGradient>
+  </defs>
+
+  <!-- app tile -->
+  <rect x="8" y="8" width="112" height="112" rx="30" fill="url(#bg)"/>
+
+  <!-- speech bubble -->
+  <rect x="26" y="34" width="76" height="52" rx="16" fill="#ffffff"/>
+  <path d="M42 82 L42 102 L64 84 Z" fill="#ffffff"/>
+
+  <!-- friendly face -->
+  <circle cx="52" cy="56" r="4.5" fill="#6d7bff"/>
+  <circle cx="76" cy="56" r="4.5" fill="#6d7bff"/>
+  <path d="M50 68 Q64 80 78 68" fill="none" stroke="#6d7bff" stroke-width="5.5" stroke-linecap="round"/>
+
+  <!-- sparkle -->
+  <path d="M100 22 L104 33 L115 37 L104 41 L100 52 L96 41 L85 37 L96 33 Z" fill="#ffe27a"/>
+</svg>

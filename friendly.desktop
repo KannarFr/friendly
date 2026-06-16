@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Friendly
+Comment=Réécrit un message dicté/collé selon un style (pro, bienveillant…)
+Exec=friendly
+Icon=friendly
+Terminal=false
+Categories=Utility;TextTools;
+Keywords=rewrite;dictation;clipboard;claude;

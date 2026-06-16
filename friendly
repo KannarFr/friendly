@@ -1,0 +1,290 @@
+#!/usr/bin/env bash
+#
+# friendly — réécrit un message dicté/collé en appliquant un style (pro,
+# bienveillant, concis…) via le CLI `claude`, puis copie le résultat dans le
+# presse-papier.
+#
+# Flux : barre centrée "Spotlight" (wofi) pour dicter/saisir le message
+#        → barre "Spotlight" de styles
+#        → génération par `claude -p`
+#        → copie (wl-copy) + notification.
+#
+set -euo pipefail
+
+APP="Friendly"
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/friendly"
+PRESETS_FILE="$CONFIG_DIR/presets.conf"
+# Ressources (CSS, icône, zone de texte) cherchées d'abord à côté du script
+# (dev / symlink), puis aux emplacements d'installation système (paquet AUR).
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+_res_dirs=(
+  "$SCRIPT_DIR"
+  "$SCRIPT_DIR/../share/friendly"
+  "${XDG_DATA_HOME:-$HOME/.local/share}/friendly"
+  /usr/share/friendly
+  /usr/local/share/friendly
+)
+find_res() {
+  local d
+  for d in "${_res_dirs[@]}"; do
+    [ -f "$d/$1" ] && { printf '%s' "$d/$1"; return 0; }
+  done
+  return 1
+}
+STYLE_FILE="$(find_res spotlight.css || true)"
+ICON="$(find_res friendly.svg || true)"
+INPUT_PY="$(find_res friendly-input.py || true)"
+STYLE_LABEL=""   # libellé lisible du style choisi (pour les notifs)
+
+# --- helpers ---------------------------------------------------------------
+
+die() { notify "$APP" "$1" critical; echo "$APP: $1" >&2; exit 1; }
+
+# notify "Titre" ["corps"] ["urgency"]
+notify() {
+  command -v notify-send >/dev/null 2>&1 || return 0
+  notify-send -a "$APP" ${ICON:+-i "$ICON"} \
+    -u "${3:-normal}" -h "string:x-canonical-private-synchronous:friendly" \
+    "$1" "${2:-}"
+}
+
+have() { command -v "$1" >/dev/null 2>&1; }
+
+clip_set() {
+  if have wl-copy; then wl-copy
+  elif have xclip; then xclip -selection clipboard
+  elif have xsel; then xsel --clipboard --input
+  else cat >/dev/null; die "Aucun outil de presse-papier (wl-copy/xclip/xsel)."
+  fi
+}
+
+# Barre Spotlight de SAISIE libre (dictée/clavier).  spotlight_entry "Invite"
+spotlight_entry() {
+  local prompt="$1"
+  if have wofi; then
+    printf '' | wofi --dmenu --prompt "$prompt" --cache-file /dev/null \
+      --hide-scroll --width 820 --lines 0 \
+      ${STYLE_FILE:+--style "$STYLE_FILE"} 2>/dev/null
+  elif have rofi; then
+    printf '' | rofi -dmenu -p "$prompt" -theme-str 'window {width: 820px;}' 2>/dev/null
+  elif have zenity; then
+    zenity --entry --title "$APP" --text "$prompt" 2>/dev/null
+  else
+    die "Aucun lanceur disponible (wofi/rofi/zenity)."
+  fi
+}
+
+# Zone de texte MULTILIGNE centrée (overlay GTK). Repli: barre mono-ligne wofi.
+# friendly-input.py : 0 = validé (texte sur stdout), 1 = annulé, autre = échec
+# runtime (ex. layer-shell non supporté) → on retombe sur wofi.
+spotlight_textarea() {
+  local prompt="$1" rc
+  if [ -n "$INPUT_PY" ] && have python3 \
+     && python3 -c 'import gi; gi.require_version("GtkLayerShell","0.1")' 2>/dev/null
+  then
+    if python3 -B "$INPUT_PY" "$prompt"; then rc=0; else rc=$?; fi
+    case "$rc" in
+      0|1) return "$rc" ;;          # validé / annulé : propage tel quel
+      *)   spotlight_entry "$prompt" ;;  # échec runtime : repli wofi
+    esac
+  else
+    spotlight_entry "$prompt"
+  fi
+}
+
+# Barre Spotlight de CHOIX dans une liste.  spotlight_list "Invite" item1 item2…
+spotlight_list() {
+  local prompt="$1"; shift
+  if have wofi; then
+    printf '%s\n' "$@" | wofi --dmenu --prompt "$prompt" --cache-file /dev/null \
+      --insensitive --hide-scroll --width 820 \
+      ${STYLE_FILE:+--style "$STYLE_FILE"} 2>/dev/null
+  elif have rofi; then
+    printf '%s\n' "$@" | rofi -dmenu -i -p "$prompt" 2>/dev/null
+  elif have zenity; then
+    zenity --list --title "$APP" --text "$prompt" --column "Style" "$@" 2>/dev/null
+  else
+    die "Aucun lanceur disponible (wofi/rofi/zenity)."
+  fi
+}
+
+# --- presets ---------------------------------------------------------------
+# Format : Nom|instruction   (lignes vides et # ignorées)
+
+ensure_presets() {
+  [ -f "$PRESETS_FILE" ] && return
+  mkdir -p "$CONFIG_DIR"
+  cat >"$PRESETS_FILE" <<'EOF'
+# friendly — styles de réécriture.
+# Format : Nom affiché|instruction passée au modèle
+# Le 1er est le défaut : surligné dans le menu, donc « Entrée » le sélectionne.
+Pro & bienveillant|un ton à la fois professionnel, bienveillant et posé
+Professionnel|un ton professionnel, clair et posé
+Bienveillant|un ton bienveillant, chaleureux et empathique
+Concis|une formulation plus concise et directe, sans perdre l'essentiel
+Plus chaleureux|un ton plus chaleureux, amical et positif
+Orthographe & grammaire|en corrigeant uniquement l'orthographe, la grammaire et la ponctuation, sans changer le ton ni le style
+EOF
+}
+
+# --- étapes ----------------------------------------------------------------
+
+get_text() {
+  # 1) arguments  2) stdin (vrai pipe/fichier)  3) barre Spotlight centrée
+  if [ "$#" -gt 0 ]; then
+    printf '%s' "$*"
+  elif [ -p /dev/stdin ] || [ -f /dev/stdin ]; then
+    cat
+  else
+    # Zone de texte centrée, focus prêt : la dictée audio écrit dedans.
+    spotlight_textarea "Dicte ton message"
+  fi
+}
+
+choose_instruction() {
+  ensure_presets
+  local names=() instrs=() line name instr
+  while IFS= read -r line; do
+    [ -z "$line" ] && continue
+    case "$line" in \#*) continue ;; esac
+    name="${line%%|*}"; instr="${line#*|}"
+    names+=("$name"); instrs+=("$instr")
+  done <"$PRESETS_FILE"
+
+  # Sortie : "label<TAB>instruction" (le main sépare les deux).
+  local i
+
+  # Overrides non-interactifs (CLI). NB: on teste le flag « fourni », pas le
+  # contenu, pour honorer une instruction vide explicite (`-i ''`).
+  if [ "$OVERRIDE_INSTRUCTION_SET" = 1 ]; then
+    printf '%s\t%s' "Personnalisé" "$OVERRIDE_INSTRUCTION"; return
+  fi
+  if [ -n "$OVERRIDE_STYLE" ]; then
+    for i in "${!names[@]}"; do
+      if [ "${names[$i]}" = "$OVERRIDE_STYLE" ]; then
+        printf '%s\t%s' "${names[$i]}" "${instrs[$i]}"; return
+      fi
+    done
+    printf '%s\t%s' "$OVERRIDE_STYLE" "$OVERRIDE_STYLE"; return  # nom inconnu = instruction littérale
+  fi
+
+  # NB: `return 1` (et pas `exit`) car cette fonction tourne dans un $(...) ;
+  # un `exit` n'y terminerait que le sous-shell, pas le script. L'appelant
+  # propage l'annulation.
+  local custom="✏️  Personnalisé…"
+  local choice
+  choice="$(spotlight_list "Style de réécriture" "${names[@]}" "$custom")" || return 1
+  [ -z "$choice" ] && return 1
+
+  if [ "$choice" = "$custom" ]; then
+    choice="$(spotlight_entry "Décris le style voulu")" || return 1
+    [ -z "$choice" ] && return 1
+    printf '%s\t%s' "Personnalisé" "$choice"
+    return
+  fi
+
+  # retrouver l'instruction du preset choisi
+  for i in "${!names[@]}"; do
+    if [ "${names[$i]}" = "$choice" ]; then
+      printf '%s\t%s' "${names[$i]}" "${instrs[$i]}"; return
+    fi
+  done
+  printf '%s\t%s' "$choice" "$choice"
+}
+
+build_prompt() {
+  local instr="$1" text="$2"
+  cat <<EOF
+Réécris le message ci-dessous en appliquant : ${instr}.
+
+Règles strictes :
+- Conserve la langue d'origine du message.
+- Garde le sens, les faits et toutes les informations importantes.
+- Ne réponds PAS au message : il s'agit de le réécrire, pas d'y répondre.
+- Renvoie UNIQUEMENT le message réécrit, sans préambule, sans guillemets, sans commentaire ni explication.
+
+Message à réécrire :
+<<<
+${text}
+>>>
+EOF
+}
+
+generate() {
+  local prompt="$1" out err rc
+  out="$(mktemp)"; err="$(mktemp)"
+  trap 'rm -f "$out" "$err"' RETURN
+
+  local sys="Tu es un outil de réécriture de texte. Tu renvoies UNIQUEMENT le texte réécrit : aucun préambule (pas de « Voici… »), aucune explication, aucun commentaire, aucun guillemet d'encadrement. Tu conserves la langue d'origine."
+  notify "Friendly" "✍️  Réécriture en cours…" low
+  if printf '%s' "$prompt" | claude -p --append-system-prompt "$sys" >"$out" 2>"$err"; then rc=0; else rc=$?; fi
+  if [ "$rc" -ne 0 ]; then
+    die "Échec de claude : $(head -c 300 "$err")"
+  fi
+  cat "$out"
+}
+
+usage() {
+  cat <<EOF
+$APP — réécrit un message en appliquant un style, via le CLI claude.
+
+Usage : friendly [options] [texte…]
+  -s, --style NOM         Utilise un preset par son nom (sinon menu interactif).
+  -i, --instruction TEXTE Instruction de style libre (court-circuite le menu).
+  -n, --no-copy           Affiche le résultat sur stdout au lieu de copier.
+  -h, --help              Cette aide.
+
+Sans texte ni pipe, une barre centrée style Spotlight s'ouvre pour dicter/saisir.
+Styles définis dans : $PRESETS_FILE
+EOF
+}
+
+# --- main ------------------------------------------------------------------
+
+OVERRIDE_INSTRUCTION=""
+OVERRIDE_INSTRUCTION_SET=0
+OVERRIDE_STYLE=""
+NO_COPY=0
+ARGS=()
+# exige un argument pour les options qui en attendent un (sinon `shift 2`
+# échouerait et `set -e` tuerait le script sans message).
+need_arg() { [ "$#" -ge 2 ] || { echo "$APP: l'option $1 attend un argument." >&2; usage >&2; exit 2; }; }
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -s|--style)       need_arg "$@"; OVERRIDE_STYLE="$2"; shift 2 ;;
+    -i|--instruction) need_arg "$@"; OVERRIDE_INSTRUCTION="$2"; OVERRIDE_INSTRUCTION_SET=1; shift 2 ;;
+    -n|--no-copy)     NO_COPY=1; shift ;;
+    -h|--help)        usage; exit 0 ;;
+    --)               shift; ARGS+=("$@"); break ;;
+    *)                ARGS+=("$1"); shift ;;
+  esac
+done
+set -- "${ARGS[@]+"${ARGS[@]}"}"
+
+have claude || die "Le CLI 'claude' est introuvable dans le PATH."
+# Échec rapide AVANT l'appel claude si on ne pourra pas copier le résultat
+# (sauf en mode --no-copy, qui écrit sur stdout).
+[ "$NO_COPY" -eq 1 ] || have wl-copy || have xclip || have xsel \
+  || die "Aucun outil de presse-papier (wl-copy/xclip/xsel)."
+
+# Annulation (Échap / fermeture) : sortie silencieuse, code 0.
+text="$(get_text "$@")" || exit 0
+# Champ validé mais vide : idem.
+[ -z "${text//[[:space:]]/}" ] && exit 0
+
+sel="$(choose_instruction)" || exit 0   # Échap au menu de styles = annulation
+STYLE_LABEL="${sel%%$'\t'*}"
+instruction="${sel#*$'\t'}"
+
+result="$(generate "$(build_prompt "$instruction" "$text")")"
+[ -z "${result//[[:space:]]/}" ] && die "Réponse vide du modèle."
+
+# Mode non-copie : sortie brute sur stdout (pour scripts / test).
+if [ "$NO_COPY" -eq 1 ]; then
+  printf '%s\n' "$result"
+  exit 0
+fi
+
+# Copie directe dans le presse-papier + notification avec le résultat.
+printf '%s' "$result" | clip_set
+notify "✓ Copié · ${STYLE_LABEL:-réécrit}" "$result"

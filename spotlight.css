@@ -1,0 +1,62 @@
+/* friendly — look "Spotlight" centré pour wofi */
+
+window {
+  margin: 0;
+  background-color: rgba(0, 0, 0, 0);
+  font-family: "JetBrainsMono Nerd Font", "JetBrains Mono", monospace;
+}
+
+#outer-box {
+  margin: 0;
+  padding: 16px;
+  border-radius: 22px;
+  background-color: rgba(22, 22, 28, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+}
+
+#input {
+  font-size: 16px;            /* identique à la zone de texte (friendly-input.py) */
+  padding: 14px 16px;
+  border: none;
+  border-radius: 14px;
+  color: #f4f4f6;
+  background-color: rgba(255, 255, 255, 0.06);
+  caret-color: #9bb0ff;
+}
+
+/* enlève l'icône loupe du champ de recherche (wofi la pose via GtkSearchEntry,
+   d'où le sélecteur large `image` — nos entrées n'ont pas d'icône) */
+#input image,
+image {
+  -gtk-icon-source: none;
+  -gtk-icon-transform: scale(0);
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+  opacity: 0;
+}
+
+#scroll {
+  margin-top: 14px;
+}
+
+#inner-box {
+  margin: 0;
+}
+
+#entry {
+  padding: 12px 16px;
+  border-radius: 12px;
+  font-size: 16px;            /* même taille partout */
+  color: #dcdce0;
+}
+
+#entry:selected {
+  background-color: rgba(120, 140, 255, 0.22);
+}
+
+#text:selected {
+  color: #ffffff;
+}

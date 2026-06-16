@@ -1,0 +1,53 @@
+# Copyright 2026 KannarFr <kannarfr@gmail.com>
+# Distributed under the terms of the GNU General Public License v2
+
+require github [ user=KannarFr tag=v${PV} ]
+
+SUMMARY="Spotlight-style overlay that rewrites a dictated/typed message in a chosen tone via Claude Code"
+DESCRIPTION="
+friendly opens a centered text area you dictate or type into, lets you pick a
+tone (professional, kind, concise...), rewrites the message with Claude Code
+(claude -p), and copies the result to the clipboard.
+"
+HOMEPAGE="https://github.com/KannarFr/friendly"
+
+LICENCES="MIT"
+SLOT="0"
+PLATFORMS="~amd64"
+
+MYOPTIONS=""
+
+# NOTE: verify these atoms against your repositories — names/categories vary, and
+# gtk-layer-shell / wofi may not be in ::arbor (add them to a personal repo if so).
+# claude-code (the `claude` CLI) is REQUIRED at runtime but is not in Exherbo:
+#   npm install -g @anthropic-ai/claude-code
+DEPENDENCIES="
+    run:
+        dev-lang/python:*[>=3.8]
+        dev-python/pygobject:3[python_abis:*(-)?]
+        x11-libs/gtk+:3
+        gui/gtk-layer-shell
+        sys-apps/wl-clipboard
+    suggestion:
+        gui/wofi [[ description = [ Tone menu launcher (falls back to rofi/zenity) ] ]]
+        x11-libs/libnotify [[ description = [ Desktop notifications ] ]]
+"
+
+# Script package: nothing to build.
+src_compile() { :; }
+src_test()    { :; }
+
+src_install() {
+    dobin friendly
+
+    insinto /usr/share/friendly
+    doins friendly-input.py spotlight.css friendly.svg
+
+    insinto /usr/share/icons/hicolor/scalable/apps
+    doins friendly.svg
+
+    insinto /usr/share/applications
+    doins friendly.desktop
+
+    # The script resolves its resources from /usr/share/friendly at runtime.
+}

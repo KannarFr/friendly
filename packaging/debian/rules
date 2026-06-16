@@ -1,0 +1,18 @@
+#!/usr/bin/make -f
+# friendly is a bash + Python script — nothing to compile.
+
+DESTDIR := debian/friendly
+
+%:
+	dh $@
+
+override_dh_auto_build:
+override_dh_auto_test:
+
+override_dh_auto_install:
+	install -Dm755 friendly          $(DESTDIR)/usr/bin/friendly
+	install -Dm644 friendly-input.py $(DESTDIR)/usr/share/friendly/friendly-input.py
+	install -Dm644 spotlight.css     $(DESTDIR)/usr/share/friendly/spotlight.css
+	install -Dm644 friendly.svg      $(DESTDIR)/usr/share/friendly/friendly.svg
+	install -Dm644 friendly.svg      $(DESTDIR)/usr/share/icons/hicolor/scalable/apps/friendly.svg
+	install -Dm644 friendly.desktop  $(DESTDIR)/usr/share/applications/friendly.desktop

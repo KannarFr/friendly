@@ -16,7 +16,7 @@ gi.require_version("Gtk", "3.0")
 gi.require_version("GtkLayerShell", "0.1")
 from gi.repository import GLib, Gtk, Gdk, GtkLayerShell  # noqa: E402
 
-# Parse argv : --on-open CMD + une invite positionnelle.
+# Parse argv: --on-open CMD + a positional prompt.
 _args = sys.argv[1:]
 ON_OPEN = ""
 _rest = []
@@ -66,7 +66,7 @@ def on_key(_win, event, view):
         return True
     if event.keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter):
         if event.state & Gdk.ModifierType.SHIFT_MASK:
-            return False  # laisse insérer un saut de ligne
+            return False  # let a newline be inserted
         submit(view)
         return True
     return False
@@ -77,7 +77,7 @@ def main():
     GtkLayerShell.init_for_window(win)
     GtkLayerShell.set_layer(win, GtkLayerShell.Layer.OVERLAY)
     GtkLayerShell.set_keyboard_mode(win, GtkLayerShell.KeyboardMode.EXCLUSIVE)
-    # pas d'ancrage -> surface centrée
+    # no anchoring -> centered surface
     win.set_size_request(900, 460)
 
     prov = Gtk.CssProvider()
@@ -121,9 +121,9 @@ def main():
     win.show_all()
     view.grab_focus()
 
-    # Une fois la fenêtre mappée/focalisée, lance la commande on-open (ex. la
-    # dictée). Un court délai laisse le compositeur donner le focus clavier à
-    # l'overlay, pour que la frappe synthétique atterrisse bien dans le champ.
+    # Once the window is mapped/focused, run the on-open command (e.g.
+    # dictation). A short delay lets the compositor give keyboard focus to the
+    # overlay, so synthetic typing lands in the field.
     if ON_OPEN:
         def _fire_on_open():
             try:
@@ -136,7 +136,7 @@ def main():
     Gtk.main()
 
     if result["text"] is None:
-        sys.exit(1)  # annulé
+        sys.exit(1)  # cancelled
     sys.stdout.write(result["text"])
 
 
@@ -144,8 +144,8 @@ if __name__ == "__main__":
     try:
         main()
     except SystemExit:
-        raise  # 0 = validé, 1 = annulé : codes voulus
+        raise  # 0 = submitted, 1 = cancelled: intended codes
     except Exception:
-        # échec runtime (layer-shell non supporté, pas d'affichage, CSS…) :
-        # code distinct pour que l'appelant retombe sur wofi.
+        # runtime failure (layer-shell unsupported, no display, CSS…):
+        # distinct code so the caller falls back to wofi.
         sys.exit(2)

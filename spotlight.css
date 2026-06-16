@@ -1,4 +1,4 @@
-/* friendly — look "Spotlight" centré pour wofi */
+/* friendly — centered "Spotlight" look for wofi */
 
 window {
   margin: 0;
@@ -15,7 +15,7 @@ window {
 }
 
 #input {
-  font-size: 16px;            /* identique à la zone de texte (friendly-input.py) */
+  font-size: 16px;            /* same as the text box (friendly-input.py) */
   padding: 14px 16px;
   border: none;
   border-radius: 14px;
@@ -24,8 +24,8 @@ window {
   caret-color: #9bb0ff;
 }
 
-/* enlève l'icône loupe du champ de recherche (wofi la pose via GtkSearchEntry,
-   d'où le sélecteur large `image` — nos entrées n'ont pas d'icône) */
+/* remove the magnifier icon from the search field (wofi adds it via
+   GtkSearchEntry, hence the broad `image` selector — our entries have no icon) */
 #input image,
 image {
   -gtk-icon-source: none;
@@ -49,7 +49,7 @@ image {
 #entry {
   padding: 12px 16px;
   border-radius: 12px;
-  font-size: 16px;            /* même taille partout */
+  font-size: 16px;            /* same size everywhere */
   color: #dcdce0;
 }
 

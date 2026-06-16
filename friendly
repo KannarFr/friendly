@@ -1,21 +1,20 @@
 #!/usr/bin/env bash
 #
-# friendly — réécrit un message dicté/collé en appliquant un style (pro,
-# bienveillant, concis…) via le CLI `claude`, puis copie le résultat dans le
-# presse-papier.
+# friendly — rewrite a dictated/typed message in a chosen tone (pro, kind,
+# concise…) via the `claude` CLI, then copy the result to the clipboard.
 #
-# Flux : barre centrée "Spotlight" (wofi) pour dicter/saisir le message
-#        → barre "Spotlight" de styles
-#        → génération par `claude -p`
-#        → copie (wl-copy) + notification.
+# Flow: centered "Spotlight" box (wofi) to dictate/type the message
+#       → "Spotlight" tone menu
+#       → generation by `claude -p`
+#       → copy (wl-copy) + notification.
 #
 set -euo pipefail
 
 APP="Friendly"
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/friendly"
 PRESETS_FILE="$CONFIG_DIR/presets.conf"
-# Ressources (CSS, icône, zone de texte) cherchées d'abord à côté du script
-# (dev / symlink), puis aux emplacements d'installation système (paquet AUR).
+# Resources (CSS, icon, text box) looked up first next to the script
+# (dev / symlink), then at system install locations (AUR package).
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 _res_dirs=(
   "$SCRIPT_DIR"
@@ -34,13 +33,13 @@ find_res() {
 STYLE_FILE="$(find_res spotlight.css || true)"
 ICON="$(find_res friendly.svg || true)"
 INPUT_PY="$(find_res friendly-input.py || true)"
-STYLE_LABEL=""   # libellé lisible du style choisi (pour les notifs)
+STYLE_LABEL=""   # human-readable label of the chosen tone (for notifications)
 
 # --- helpers ---------------------------------------------------------------
 
 die() { notify "$APP" "$1" critical; echo "$APP: $1" >&2; exit 1; }
 
-# notify "Titre" ["corps"] ["urgency"]
+# notify "Title" ["body"] ["urgency"]
 notify() {
   command -v notify-send >/dev/null 2>&1 || return 0
   notify-send -a "$APP" ${ICON:+-i "$ICON"} \
@@ -58,7 +57,7 @@ clip_set() {
   fi
 }
 
-# Barre Spotlight de SAISIE libre (dictée/clavier).  spotlight_entry "Invite"
+# Spotlight bar for free-form INPUT (dictation/keyboard).  spotlight_entry "Prompt"
 spotlight_entry() {
   local prompt="$1"
   if have wofi; then
@@ -74,12 +73,12 @@ spotlight_entry() {
   fi
 }
 
-# Zone de texte MULTILIGNE centrée (overlay GTK). Repli: barre mono-ligne wofi.
-# friendly-input.py : 0 = validé (texte sur stdout), 1 = annulé, autre = échec
-# runtime (ex. layer-shell non supporté) → on retombe sur wofi.
+# Centered MULTILINE text box (GTK overlay). Fallback: single-line wofi bar.
+# friendly-input.py: 0 = submitted (text on stdout), 1 = cancelled, other =
+# runtime failure (e.g. layer-shell unsupported) → fall back to wofi.
 spotlight_textarea() {
   local prompt="$1" rc
-  # ON_OPEN : commande lancée quand la fenêtre est ouverte/focalisée (ex. dictée).
+  # ON_OPEN: command run when the window is open/focused (e.g. dictation).
   local on_open_args=()
   [ -n "$ON_OPEN" ] && on_open_args=(--on-open "$ON_OPEN")
   if [ -n "$INPUT_PY" ] && have python3 \
@@ -87,18 +86,18 @@ spotlight_textarea() {
   then
     if python3 -B "$INPUT_PY" "${on_open_args[@]}" "$prompt"; then rc=0; else rc=$?; fi
     case "$rc" in
-      0|1) return "$rc" ;;          # validé / annulé : propage tel quel
-      *)   spotlight_entry "$prompt" ;;  # échec runtime : repli wofi
+      0|1) return "$rc" ;;          # submitted / cancelled: propagate as-is
+      *)   spotlight_entry "$prompt" ;;  # runtime failure: wofi fallback
     esac
   else
-    # Repli wofi (pas de zone GTK) : on lance quand même la dictée, en différé
-    # le temps que wofi prenne le focus clavier.
+    # wofi fallback (no GTK box): still start dictation, delayed so wofi has
+    # time to grab keyboard focus first.
     [ -n "$ON_OPEN" ] && ( sleep 0.2; sh -c "$ON_OPEN" ) >/dev/null 2>&1 &
     spotlight_entry "$prompt"
   fi
 }
 
-# Barre Spotlight de CHOIX dans une liste.  spotlight_list "Invite" item1 item2…
+# Spotlight bar to PICK from a list.  spotlight_list "Prompt" item1 item2…
 spotlight_list() {
   local prompt="$1"; shift
   if have wofi; then
@@ -115,7 +114,7 @@ spotlight_list() {
 }
 
 # --- presets ---------------------------------------------------------------
-# Format : Nom|instruction   (lignes vides et # ignorées)
+# Format: Name|instruction   (blank lines and # ignored)
 
 ensure_presets() {
   [ -f "$PRESETS_FILE" ] && return
@@ -133,16 +132,16 @@ Spelling & grammar|fixing only spelling, grammar and punctuation, without changi
 EOF
 }
 
-# --- étapes ----------------------------------------------------------------
+# --- steps ------------------------------------------------------------------
 
 get_text() {
-  # 1) arguments  2) stdin (vrai pipe/fichier)  3) barre Spotlight centrée
+  # 1) arguments  2) stdin (real pipe/file)  3) centered Spotlight box
   if [ "$#" -gt 0 ]; then
     printf '%s' "$*"
   elif [ -p /dev/stdin ] || [ -f /dev/stdin ]; then
     cat
   else
-    # Zone de texte centrée, focus prêt : la dictée audio écrit dedans.
+    # Centered text box, focus ready: voice dictation types into it.
     spotlight_textarea "Dictate your message"
   fi
 }
@@ -157,11 +156,11 @@ choose_instruction() {
     names+=("$name"); instrs+=("$instr")
   done <"$PRESETS_FILE"
 
-  # Sortie : "label<TAB>instruction" (le main sépare les deux).
+  # Output: "label<TAB>instruction" (main splits the two).
   local i
 
-  # Overrides non-interactifs (CLI). NB: on teste le flag « fourni », pas le
-  # contenu, pour honorer une instruction vide explicite (`-i ''`).
+  # Non-interactive overrides (CLI). NB: we test the "provided" flag, not the
+  # content, to honor an explicit empty instruction (`-i ''`).
   if [ "$OVERRIDE_INSTRUCTION_SET" = 1 ]; then
     printf '%s\t%s' "Custom" "$OVERRIDE_INSTRUCTION"; return
   fi
@@ -171,12 +170,12 @@ choose_instruction() {
         printf '%s\t%s' "${names[$i]}" "${instrs[$i]}"; return
       fi
     done
-    printf '%s\t%s' "$OVERRIDE_STYLE" "$OVERRIDE_STYLE"; return  # nom inconnu = instruction littérale
+    printf '%s\t%s' "$OVERRIDE_STYLE" "$OVERRIDE_STYLE"; return  # unknown name = literal instruction
   fi
 
-  # NB: `return 1` (et pas `exit`) car cette fonction tourne dans un $(...) ;
-  # un `exit` n'y terminerait que le sous-shell, pas le script. L'appelant
-  # propage l'annulation.
+  # NB: `return 1` (not `exit`) because this function runs inside a $(...);
+  # an `exit` there would only end the subshell, not the script. The caller
+  # propagates the cancellation.
   local custom="✏️  Custom…"
   local choice
   choice="$(spotlight_list "Rewrite tone" "${names[@]}" "$custom")" || return 1
@@ -189,7 +188,7 @@ choose_instruction() {
     return
   fi
 
-  # retrouver l'instruction du preset choisi
+  # find the instruction of the chosen preset
   for i in "${!names[@]}"; do
     if [ "${names[$i]}" = "$choice" ]; then
       printf '%s\t%s' "${names[$i]}" "${instrs[$i]}"; return
@@ -252,11 +251,11 @@ EOF
 OVERRIDE_INSTRUCTION=""
 OVERRIDE_INSTRUCTION_SET=0
 OVERRIDE_STYLE=""
-ON_OPEN="${FRIENDLY_ON_OPEN:-}"   # commande lancée à l'ouverture (ex. dictée)
+ON_OPEN="${FRIENDLY_ON_OPEN:-}"   # command run when the box opens (e.g. dictation)
 NO_COPY=0
 ARGS=()
-# exige un argument pour les options qui en attendent un (sinon `shift 2`
-# échouerait et `set -e` tuerait le script sans message).
+# require an argument for options that expect one (otherwise `shift 2` would
+# fail and `set -e` would kill the script with no message).
 need_arg() { [ "$#" -ge 2 ] || { echo "$APP: option $1 requires an argument." >&2; usage >&2; exit 2; }; }
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -272,29 +271,29 @@ done
 set -- "${ARGS[@]+"${ARGS[@]}"}"
 
 have claude || die "The 'claude' CLI was not found in PATH."
-# Échec rapide AVANT l'appel claude si on ne pourra pas copier le résultat
-# (sauf en mode --no-copy, qui écrit sur stdout).
+# Fail fast BEFORE calling claude if we won't be able to copy the result
+# (except in --no-copy mode, which writes to stdout).
 [ "$NO_COPY" -eq 1 ] || have wl-copy || have xclip || have xsel \
   || die "No clipboard tool found (wl-copy/xclip/xsel)."
 
-# Annulation (Échap / fermeture) : sortie silencieuse, code 0.
+# Cancellation (Esc / close): exit silently, code 0.
 text="$(get_text "$@")" || exit 0
-# Champ validé mais vide : idem.
+# Submitted but empty: same.
 [ -z "${text//[[:space:]]/}" ] && exit 0
 
-sel="$(choose_instruction)" || exit 0   # Échap au menu de styles = annulation
+sel="$(choose_instruction)" || exit 0   # Esc at the tone menu = cancel
 STYLE_LABEL="${sel%%$'\t'*}"
 instruction="${sel#*$'\t'}"
 
 result="$(generate "$(build_prompt "$instruction" "$text")")"
 [ -z "${result//[[:space:]]/}" ] && die "Empty response from the model."
 
-# Mode non-copie : sortie brute sur stdout (pour scripts / test).
+# No-copy mode: raw output on stdout (for scripts / testing).
 if [ "$NO_COPY" -eq 1 ]; then
   printf '%s\n' "$result"
   exit 0
 fi
 
-# Copie directe dans le presse-papier + notification avec le résultat.
+# Copy straight to the clipboard + notification with the result.
 printf '%s' "$result" | clip_set
 notify "✓ Copied · ${STYLE_LABEL:-rewritten}" "$result"

@@ -17,10 +17,13 @@ Arch + Sway.
 
 </div>
 
-<!-- Record your own and drop it here as docs/demo.gif, then uncomment:
-![demo](docs/demo.gif)
-     wf-recorder -g "$(slurp)" -f /tmp/friendly.mp4   # record, then convert to gif
--->
+<p align="center">
+  <img src="docs/demo.gif" width="80%" alt="friendly demo: dictate into the box, pick a tone, get the rewrite on the clipboard" />
+</p>
+
+<p align="center">
+  <em>One hotkey: the box opens and dictation auto-starts; speak, pick a tone, paste the rewrite.</em>
+</p>
 
 <p align="center">
   <img src="docs/screenshot.png" width="49%" alt="text area" />

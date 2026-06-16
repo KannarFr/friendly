@@ -116,7 +116,7 @@ jobs:
       - name: Install build tooling
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends debhelper devscripts dpkg-dev
+          sudo apt-get install -y --no-install-recommends build-essential debhelper devscripts dpkg-dev
 
       - name: Build the package
         run: |

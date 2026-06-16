@@ -24,7 +24,7 @@ optdepends=(
 )
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
 # Refreshed by CI on each release (updpkgsums); placeholder for manual builds.
-sha256sums=('SKIP')
+sha256sums=('de2643efffff0165f0211ed71d79a9f1aed46eeefb9d666ce9c91581c4cc735a')
 
 package() {
   cd "$srcdir/$pkgname-$pkgver"

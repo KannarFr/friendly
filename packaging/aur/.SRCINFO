@@ -18,6 +18,6 @@ pkgbase = friendly
 	optdepends = rofi: fallback launcher if wofi is missing
 	optdepends = zenity: last-resort fallback dialogs
 	source = friendly-0.1.0.tar.gz::https://github.com/KannarFr/friendly/archive/refs/tags/v0.1.0.tar.gz
-	sha256sums = SKIP
+	sha256sums = de2643efffff0165f0211ed71d79a9f1aed46eeefb9d666ce9c91581c4cc735a
 
 pkgname = friendly

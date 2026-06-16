@@ -54,7 +54,7 @@ clip_set() {
   if have wl-copy; then wl-copy
   elif have xclip; then xclip -selection clipboard
   elif have xsel; then xsel --clipboard --input
-  else cat >/dev/null; die "Aucun outil de presse-papier (wl-copy/xclip/xsel)."
+  else cat >/dev/null; die "No clipboard tool found (wl-copy/xclip/xsel)."
   fi
 }
 
@@ -70,7 +70,7 @@ spotlight_entry() {
   elif have zenity; then
     zenity --entry --title "$APP" --text "$prompt" 2>/dev/null
   else
-    die "Aucun lanceur disponible (wofi/rofi/zenity)."
+    die "No launcher available (wofi/rofi/zenity)."
   fi
 }
 
@@ -110,7 +110,7 @@ spotlight_list() {
   elif have zenity; then
     zenity --list --title "$APP" --text "$prompt" --column "Style" "$@" 2>/dev/null
   else
-    die "Aucun lanceur disponible (wofi/rofi/zenity)."
+    die "No launcher available (wofi/rofi/zenity)."
   fi
 }
 
@@ -121,15 +121,15 @@ ensure_presets() {
   [ -f "$PRESETS_FILE" ] && return
   mkdir -p "$CONFIG_DIR"
   cat >"$PRESETS_FILE" <<'EOF'
-# friendly — styles de réécriture.
-# Format : Nom affiché|instruction passée au modèle
-# Le 1er est le défaut : surligné dans le menu, donc « Entrée » le sélectionne.
-Pro & bienveillant|un ton à la fois professionnel, bienveillant et posé
-Professionnel|un ton professionnel, clair et posé
-Bienveillant|un ton bienveillant, chaleureux et empathique
-Concis|une formulation plus concise et directe, sans perdre l'essentiel
-Plus chaleureux|un ton plus chaleureux, amical et positif
-Orthographe & grammaire|en corrigeant uniquement l'orthographe, la grammaire et la ponctuation, sans changer le ton ni le style
+# friendly — rewrite tones.
+# Format: Display name|instruction sent to the model
+# The first is the default: highlighted in the menu, so Enter picks it.
+Pro & kind|a tone that is both professional, kind and composed
+Professional|a professional, clear and composed tone
+Kind|a warm, caring and empathetic tone
+Concise|a more concise and direct phrasing, keeping the essentials
+Warmer|a warmer, friendlier and more positive tone
+Spelling & grammar|fixing only spelling, grammar and punctuation, without changing the tone or style
 EOF
 }
 
@@ -143,7 +143,7 @@ get_text() {
     cat
   else
     # Zone de texte centrée, focus prêt : la dictée audio écrit dedans.
-    spotlight_textarea "Dicte ton message"
+    spotlight_textarea "Dictate your message"
   fi
 }
 
@@ -163,7 +163,7 @@ choose_instruction() {
   # Overrides non-interactifs (CLI). NB: on teste le flag « fourni », pas le
   # contenu, pour honorer une instruction vide explicite (`-i ''`).
   if [ "$OVERRIDE_INSTRUCTION_SET" = 1 ]; then
-    printf '%s\t%s' "Personnalisé" "$OVERRIDE_INSTRUCTION"; return
+    printf '%s\t%s' "Custom" "$OVERRIDE_INSTRUCTION"; return
   fi
   if [ -n "$OVERRIDE_STYLE" ]; then
     for i in "${!names[@]}"; do
@@ -177,15 +177,15 @@ choose_instruction() {
   # NB: `return 1` (et pas `exit`) car cette fonction tourne dans un $(...) ;
   # un `exit` n'y terminerait que le sous-shell, pas le script. L'appelant
   # propage l'annulation.
-  local custom="✏️  Personnalisé…"
+  local custom="✏️  Custom…"
   local choice
-  choice="$(spotlight_list "Style de réécriture" "${names[@]}" "$custom")" || return 1
+  choice="$(spotlight_list "Rewrite tone" "${names[@]}" "$custom")" || return 1
   [ -z "$choice" ] && return 1
 
   if [ "$choice" = "$custom" ]; then
-    choice="$(spotlight_entry "Décris le style voulu")" || return 1
+    choice="$(spotlight_entry "Describe the tone")" || return 1
     [ -z "$choice" ] && return 1
-    printf '%s\t%s' "Personnalisé" "$choice"
+    printf '%s\t%s' "Custom" "$choice"
     return
   fi
 
@@ -201,15 +201,15 @@ choose_instruction() {
 build_prompt() {
   local instr="$1" text="$2"
   cat <<EOF
-Réécris le message ci-dessous en appliquant : ${instr}.
+Rewrite the message below applying: ${instr}.
 
-Règles strictes :
-- Conserve la langue d'origine du message.
-- Garde le sens, les faits et toutes les informations importantes.
-- Ne réponds PAS au message : il s'agit de le réécrire, pas d'y répondre.
-- Renvoie UNIQUEMENT le message réécrit, sans préambule, sans guillemets, sans commentaire ni explication.
+Strict rules:
+- Keep the original language of the message.
+- Preserve the meaning, the facts and all important information.
+- Do NOT reply to the message: rewrite it, don't answer it.
+- Return ONLY the rewritten message, with no preamble, no quotes, no comment or explanation.
 
-Message à réécrire :
+Message to rewrite:
 <<<
 ${text}
 >>>
@@ -221,29 +221,29 @@ generate() {
   out="$(mktemp)"; err="$(mktemp)"
   trap 'rm -f "$out" "$err"' RETURN
 
-  local sys="Tu es un outil de réécriture de texte. Tu renvoies UNIQUEMENT le texte réécrit : aucun préambule (pas de « Voici… »), aucune explication, aucun commentaire, aucun guillemet d'encadrement. Tu conserves la langue d'origine."
-  notify "Friendly" "✍️  Réécriture en cours…" low
+  local sys="You are a text rewriting tool. You return ONLY the rewritten text: no preamble (no \"Here is…\"), no explanation, no comment, no surrounding quotes. You keep the original language."
+  notify "Friendly" "✍️  Rewriting…" low
   if printf '%s' "$prompt" | claude -p --append-system-prompt "$sys" >"$out" 2>"$err"; then rc=0; else rc=$?; fi
   if [ "$rc" -ne 0 ]; then
-    die "Échec de claude : $(head -c 300 "$err")"
+    die "claude failed: $(head -c 300 "$err")"
   fi
   cat "$out"
 }
 
 usage() {
   cat <<EOF
-$APP — réécrit un message en appliquant un style, via le CLI claude.
+$APP — rewrite a message in a chosen tone, via the claude CLI.
 
-Usage : friendly [options] [texte…]
-  -s, --style NOM         Utilise un preset par son nom (sinon menu interactif).
-  -i, --instruction TEXTE Instruction de style libre (court-circuite le menu).
-  -o, --on-open CMD       Lance CMD quand la zone de saisie s'ouvre/focalise
-                          (ex. démarrer une dictée). Défaut : \$FRIENDLY_ON_OPEN.
-  -n, --no-copy           Affiche le résultat sur stdout au lieu de copier.
-  -h, --help              Cette aide.
+Usage: friendly [options] [text…]
+  -s, --style NAME        Use a preset by name (otherwise interactive menu).
+  -i, --instruction TEXT  Free-form tone instruction (skips the menu).
+  -o, --on-open CMD       Run CMD when the input box opens/focuses
+                          (e.g. start dictation). Default: \$FRIENDLY_ON_OPEN.
+  -n, --no-copy           Print the result to stdout instead of copying.
+  -h, --help              This help.
 
-Sans texte ni pipe, une barre centrée style Spotlight s'ouvre pour dicter/saisir.
-Styles définis dans : $PRESETS_FILE
+With no text or pipe, a centered Spotlight-style box opens to dictate/type.
+Tones defined in: $PRESETS_FILE
 EOF
 }
 
@@ -257,7 +257,7 @@ NO_COPY=0
 ARGS=()
 # exige un argument pour les options qui en attendent un (sinon `shift 2`
 # échouerait et `set -e` tuerait le script sans message).
-need_arg() { [ "$#" -ge 2 ] || { echo "$APP: l'option $1 attend un argument." >&2; usage >&2; exit 2; }; }
+need_arg() { [ "$#" -ge 2 ] || { echo "$APP: option $1 requires an argument." >&2; usage >&2; exit 2; }; }
 while [ "$#" -gt 0 ]; do
   case "$1" in
     -s|--style)       need_arg "$@"; OVERRIDE_STYLE="$2"; shift 2 ;;
@@ -271,11 +271,11 @@ while [ "$#" -gt 0 ]; do
 done
 set -- "${ARGS[@]+"${ARGS[@]}"}"
 
-have claude || die "Le CLI 'claude' est introuvable dans le PATH."
+have claude || die "The 'claude' CLI was not found in PATH."
 # Échec rapide AVANT l'appel claude si on ne pourra pas copier le résultat
 # (sauf en mode --no-copy, qui écrit sur stdout).
 [ "$NO_COPY" -eq 1 ] || have wl-copy || have xclip || have xsel \
-  || die "Aucun outil de presse-papier (wl-copy/xclip/xsel)."
+  || die "No clipboard tool found (wl-copy/xclip/xsel)."
 
 # Annulation (Échap / fermeture) : sortie silencieuse, code 0.
 text="$(get_text "$@")" || exit 0
@@ -287,7 +287,7 @@ STYLE_LABEL="${sel%%$'\t'*}"
 instruction="${sel#*$'\t'}"
 
 result="$(generate "$(build_prompt "$instruction" "$text")")"
-[ -z "${result//[[:space:]]/}" ] && die "Réponse vide du modèle."
+[ -z "${result//[[:space:]]/}" ] && die "Empty response from the model."
 
 # Mode non-copie : sortie brute sur stdout (pour scripts / test).
 if [ "$NO_COPY" -eq 1 ]; then
@@ -297,4 +297,4 @@ fi
 
 # Copie directe dans le presse-papier + notification avec le résultat.
 printf '%s' "$result" | clip_set
-notify "✓ Copié · ${STYLE_LABEL:-réécrit}" "$result"
+notify "✓ Copied · ${STYLE_LABEL:-rewritten}" "$result"

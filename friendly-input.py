@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""friendly — zone de texte multiligne centrée (overlay layer-shell), look Spotlight.
+"""friendly — centered multiline text box (layer-shell overlay), Spotlight look.
 
-Usage : friendly-input.py [--on-open CMD] [invite]
-  Entrée        valide (imprime le texte sur stdout, code 0)
-  Maj+Entrée    nouvelle ligne
-  Échap         annule (rien sur stdout, code 1)
-  --on-open CMD lance CMD (shell) une fois la fenêtre affichée et focalisée
-                — ex. démarrer une dictée qui tape dans le champ.
+Usage: friendly-input.py [--on-open CMD] [prompt]
+  Enter         submit (prints the text to stdout, exit 0)
+  Shift+Enter   new line
+  Esc           cancel (nothing on stdout, exit 1)
+  --on-open CMD run CMD (shell) once the window is shown and focused
+                — e.g. start dictation that types into the field.
 """
 import subprocess
 import sys
@@ -28,7 +28,7 @@ while _i < len(_args):
     else:
         _rest.append(_args[_i])
         _i += 1
-PROMPT = _rest[0] if _rest else "Dicte ton message"
+PROMPT = _rest[0] if _rest else "Dictate your message"
 
 CSS = b"""
 window { background-color: rgba(0,0,0,0);
@@ -109,7 +109,7 @@ def main():
     outer.pack_start(scroll, True, True, 0)
 
     hint = Gtk.Label(
-        label="Entrée = valider   ·   Maj+Entrée = nouvelle ligne   ·   Échap = annuler",
+        label="Enter = submit   ·   Shift+Enter = new line   ·   Esc = cancel",
         xalign=0,
     )
     hint.set_name("hint")

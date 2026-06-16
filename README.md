@@ -170,13 +170,13 @@ friendly
 CLI / scriptable:
 
 ```bash
-friendly -s "Professionnel" "mon texte"      # preset by name
+friendly -s "Professional" "my text"      # preset by name
 friendly -i "a very formal tone" "my text"   # free-form instruction
-echo "mon texte" | friendly -s Concis -n     # from a pipe, result on stdout
+echo "my text" | friendly -s Concise -n     # from a pipe, result on stdout
 ```
 
-> The UI strings and the default presets ship in **French** (see the demo above).
-> Everything is editable — rename/translate the presets in `presets.conf`.
+> The rewrite **keeps the language of your message** — dictate in any language and the
+> output stays in it; only the tone changes. Presets are editable in `presets.conf`.
 
 | Flag | Meaning |
 | --- | --- |
@@ -191,14 +191,13 @@ echo "mon texte" | friendly -s Concis -n     # from a pipe, result on stdout
 ## Configuration
 
 **Tones** live in `~/.config/friendly/presets.conf` (created on first run). One per
-line, `Display name|instruction sent to the model` (ships in French, editable).
-The **first** preset is the default — it's highlighted in the menu, so just pressing
-`Enter` picks it:
+line, `Display name|instruction sent to the model`. The **first** preset is the
+default — it's highlighted in the menu, so just pressing `Enter` picks it:
 
 ```
-Pro & bienveillant|un ton à la fois professionnel, bienveillant et posé
-Professionnel|un ton professionnel, clair et posé
-Concis|une formulation plus concise et directe, sans perdre l'essentiel
+Pro & kind|a tone that is both professional, kind and composed
+Professional|a professional, clear and composed tone
+Concise|a more concise and direct phrasing, keeping the essentials
 ```
 
 **Look** — tweak `spotlight.css` (the `wofi` bars) and the inline CSS in

@@ -152,12 +152,14 @@ To **auto-start dictation when the box opens** (so one hotkey does both), pass
 `--on-open CMD` — it runs `CMD` once the window is focused. With Handy on Sway:
 
 ```
-bindsym $mod+y exec /usr/bin/friendly --on-open 'handy --toggle-transcription'
+bindsym $mod+y exec /usr/bin/friendly \
+  --on-open 'handy --toggle-transcription' --on-cancel 'handy --cancel'
 ```
 
 Now `$mod+y` opens the box and starts recording; speak, stop your dictation (Handy
-types the text into the box), then `Enter`. You can also set it globally with the
-`FRIENDLY_ON_OPEN` environment variable instead of the flag.
+types the text into the box), then `Enter`. Pressing `Esc` cancels **and** stops the
+dictation via `--on-cancel` (so Handy doesn't keep recording). Both can also be set
+globally with the `FRIENDLY_ON_OPEN` / `FRIENDLY_ON_CANCEL` environment variables.
 
 ## Usage
 
@@ -183,6 +185,7 @@ echo "my text" | friendly -s Concise -n     # from a pipe, result on stdout
 | `-s, --style NAME` | use a preset by name (skip the menu) |
 | `-i, --instruction TEXT` | free-form tone instruction (skip the menu) |
 | `-o, --on-open CMD` | run `CMD` when the box opens (e.g. start dictation); env: `FRIENDLY_ON_OPEN` |
+| `-c, --on-cancel CMD` | run `CMD` on cancel/Esc (e.g. stop dictation); env: `FRIENDLY_ON_CANCEL` |
 | `-n, --no-copy` | print the result to stdout instead of copying |
 | `-h, --help` | help |
 

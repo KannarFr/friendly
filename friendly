@@ -49,6 +49,9 @@ notify() {
 
 have() { command -v "$1" >/dev/null 2>&1; }
 
+# Run the on-cancel command (e.g. stop/discard dictation) if set; no-op otherwise.
+on_cancel() { [ -n "${ON_CANCEL:-}" ] && sh -c "$ON_CANCEL" >/dev/null 2>&1 || true; }
+
 clip_set() {
   if have wl-copy; then wl-copy
   elif have xclip; then xclip -selection clipboard
@@ -238,6 +241,8 @@ Usage: friendly [options] [text…]
   -i, --instruction TEXT  Free-form tone instruction (skips the menu).
   -o, --on-open CMD       Run CMD when the input box opens/focuses
                           (e.g. start dictation). Default: \$FRIENDLY_ON_OPEN.
+  -c, --on-cancel CMD     Run CMD on cancel/Esc (e.g. stop dictation).
+                          Default: \$FRIENDLY_ON_CANCEL.
   -n, --no-copy           Print the result to stdout instead of copying.
   -h, --help              This help.
 
@@ -251,7 +256,8 @@ EOF
 OVERRIDE_INSTRUCTION=""
 OVERRIDE_INSTRUCTION_SET=0
 OVERRIDE_STYLE=""
-ON_OPEN="${FRIENDLY_ON_OPEN:-}"   # command run when the box opens (e.g. dictation)
+ON_OPEN="${FRIENDLY_ON_OPEN:-}"     # command run when the box opens (e.g. start dictation)
+ON_CANCEL="${FRIENDLY_ON_CANCEL:-}" # command run when cancelled (e.g. stop dictation)
 NO_COPY=0
 ARGS=()
 # require an argument for options that expect one (otherwise `shift 2` would
@@ -262,6 +268,7 @@ while [ "$#" -gt 0 ]; do
     -s|--style)       need_arg "$@"; OVERRIDE_STYLE="$2"; shift 2 ;;
     -i|--instruction) need_arg "$@"; OVERRIDE_INSTRUCTION="$2"; OVERRIDE_INSTRUCTION_SET=1; shift 2 ;;
     -o|--on-open)     need_arg "$@"; ON_OPEN="$2"; shift 2 ;;
+    -c|--on-cancel)   need_arg "$@"; ON_CANCEL="$2"; shift 2 ;;
     -n|--no-copy)     NO_COPY=1; shift ;;
     -h|--help)        usage; exit 0 ;;
     --)               shift; ARGS+=("$@"); break ;;
@@ -276,12 +283,12 @@ have claude || die "The 'claude' CLI was not found in PATH."
 [ "$NO_COPY" -eq 1 ] || have wl-copy || have xclip || have xsel \
   || die "No clipboard tool found (wl-copy/xclip/xsel)."
 
-# Cancellation (Esc / close): exit silently, code 0.
-text="$(get_text "$@")" || exit 0
+# Cancellation (Esc / close): run on-cancel (e.g. stop dictation), exit silently.
+text="$(get_text "$@")" || { on_cancel; exit 0; }
 # Submitted but empty: same.
-[ -z "${text//[[:space:]]/}" ] && exit 0
+[ -z "${text//[[:space:]]/}" ] && { on_cancel; exit 0; }
 
-sel="$(choose_instruction)" || exit 0   # Esc at the tone menu = cancel
+sel="$(choose_instruction)" || { on_cancel; exit 0; }   # Esc at the tone menu = cancel
 STYLE_LABEL="${sel%%$'\t'*}"
 instruction="${sel#*$'\t'}"
 

@@ -143,9 +143,35 @@ bind = $mainMod, Y, exec, friendly
 
 ## Dictation
 
-`friendly` doesn't transcribe — it takes whatever you type into its text area. Pair it
-with any tool that types into the focused window, e.g.
-[Handy](https://github.com/cjpais/Handy) or
+### Built-in (recommended)
+
+`friendly -d` records the mic as soon as the box opens and shows a **● Listening**
+indicator with a level meter. Press `Enter` to stop: the audio is transcribed and the
+text lands in the field, ready to edit. Press `Enter` again to submit. `Ctrl+Enter`
+stops and submits in one go, `Ctrl+R` records more (the text is appended), and `Esc`
+cancels.
+
+```
+bindsym $mod+y exec /usr/bin/friendly -d
+```
+
+The speech-to-text **backend** is pluggable, with `--stt BACKEND` (or `FRIENDLY_STT`):
+
+| Backend | What runs |
+| --- | --- |
+| `auto` *(what `-d` uses)* | `handy` if installed, else `whisper` |
+| `handy` | [Handy](https://github.com/cjpais/Handy)'s headless mode (`handy --transcribe-file`). It uses Handy's installed model and settings and doesn't need the Handy app running, so no Handy window appears |
+| `whisper` | [whisper.cpp](https://github.com/ggml-org/whisper.cpp)'s `whisper-cli`, with the model in `FRIENDLY_WHISPER_MODEL` (language: `FRIENDLY_STT_LANG`, default `auto`) |
+| any command | e.g. `--stt 'my-stt --lang fr {wav}'`: `{wav}` becomes the path of a 16 kHz mono WAV (it's appended if there is no `{wav}`), and the text is read from stdout |
+
+Recording uses `pw-record` (PipeWire), then falls back to `parecord` and `arecord`.
+Transcription starts once you stop, so there is no live text while you speak. With
+Handy, a short message takes about 1–2 s, most of it loading the model.
+
+### External dictation tool
+
+Alternatively, pair `friendly` with any tool that types into the focused window, e.g.
+[Handy](https://github.com/cjpais/Handy) (the app) or
 [nerd-dictation](https://github.com/ideasman42/nerd-dictation).
 
 To **auto-start dictation when the box opens** (so one hotkey does both), pass
@@ -186,6 +212,8 @@ echo "my text" | friendly -s Concise -n     # from a pipe, result on stdout
 | `-i, --instruction TEXT` | free-form tone instruction (skip the menu) |
 | `-o, --on-open CMD` | run `CMD` when the box opens (e.g. start dictation); env: `FRIENDLY_ON_OPEN` |
 | `-c, --on-cancel CMD` | run `CMD` on cancel/Esc (e.g. stop dictation); env: `FRIENDLY_ON_CANCEL` |
+| `-d, --dictate` | built-in dictation with the `auto` backend |
+| `--stt BACKEND` | built-in dictation with `BACKEND` (`auto`, `handy`, `whisper`, or a command); env: `FRIENDLY_STT` |
 | `-n, --no-copy` | print the result to stdout instead of copying |
 | `-h, --help` | help |
 
@@ -217,6 +245,8 @@ All in the official Arch repos except Claude Code:
 | `wl-clipboard` | clipboard (`wl-copy`) |
 | `wofi` | tone menu *(falls back to `rofi`, then `zenity`)* |
 | `libnotify` | notifications *(optional but recommended)* |
+| `handy` / `handy-bin` *(AUR)* or `whisper.cpp-git` *(AUR)* | speech-to-text for `-d` *(optional)* |
+| `pipewire-audio` | mic recording for `-d` (`pw-record`) *(optional)* |
 
 ## Packaging / releasing
 

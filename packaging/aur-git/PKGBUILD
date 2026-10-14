@@ -21,6 +21,9 @@ optdepends=(
   'libnotify: desktop notifications (result + progress)'
   'rofi: fallback launcher if wofi is missing'
   'zenity: last-resort fallback dialogs'
+  'handy: speech-to-text backend for built-in dictation, --dictate (AUR: handy or handy-bin)'
+  'whisper.cpp-git: alternative speech-to-text backend, --stt whisper (AUR; plus a ggml model)'
+  'pipewire-audio: mic recording for --dictate (pw-record; falls back to parecord/arecord)'
 )
 makedepends=('git')
 provides=('friendly')

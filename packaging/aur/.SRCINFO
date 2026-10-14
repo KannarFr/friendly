@@ -17,7 +17,10 @@ pkgbase = friendly
 	optdepends = libnotify: desktop notifications (result + progress)
 	optdepends = rofi: fallback launcher if wofi is missing
 	optdepends = zenity: last-resort fallback dialogs
-	source = friendly-0.1.0.tar.gz::https://github.com/KannarFr/friendly/archive/refs/tags/v0.1.0.tar.gz
+	optdepends = handy: speech-to-text backend for built-in dictation, --dictate (AUR: handy or handy-bin)
+	optdepends = whisper.cpp-git: alternative speech-to-text backend, --stt whisper (AUR; plus a ggml model)
+	optdepends = pipewire-audio: mic recording for --dictate (pw-record; falls back to parecord/arecord)
+	source = friendly-0.1.2.tar.gz::https://github.com/KannarFr/friendly/archive/refs/tags/v0.1.2.tar.gz
 	sha256sums = 3b38f363864a36f9d74584b20f2a605eb1cbd71bebfc2ad9b2379bbbaa25c345
 
 pkgname = friendly

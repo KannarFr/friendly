@@ -49,6 +49,14 @@ notify() {
 
 have() { command -v "$1" >/dev/null 2>&1; }
 
+# Built-in dictation was asked for but can't run here: say so instead of
+# silently opening a box that doesn't listen.
+stt_unavailable() {
+  [ -n "${STT:-}" ] || return 0
+  notify "$APP" "Built-in dictation unavailable: $1" normal
+  echo "$APP: built-in dictation unavailable: $1" >&2
+}
+
 # Run the on-cancel command (e.g. stop/discard dictation) if set; no-op otherwise.
 on_cancel() { [ -n "${ON_CANCEL:-}" ] && sh -c "$ON_CANCEL" >/dev/null 2>&1 || true; }
 
@@ -84,17 +92,22 @@ spotlight_textarea() {
   # ON_OPEN: command run when the window is open/focused (e.g. dictation).
   local on_open_args=()
   [ -n "$ON_OPEN" ] && on_open_args=(--on-open "$ON_OPEN")
+  # STT: built-in dictation backend (record + transcribe inside the box).
+  [ -n "$STT" ] && on_open_args+=(--stt "$STT")
   if [ -n "$INPUT_PY" ] && have python3 \
      && python3 -c 'import gi; gi.require_version("GtkLayerShell","0.1")' 2>/dev/null
   then
     if python3 -B "$INPUT_PY" "${on_open_args[@]}" "$prompt"; then rc=0; else rc=$?; fi
     case "$rc" in
       0|1) return "$rc" ;;          # submitted / cancelled: propagate as-is
-      *)   spotlight_entry "$prompt" ;;  # runtime failure: wofi fallback
+      *)   stt_unavailable "the text box failed to open (layer-shell?)"
+           spotlight_entry "$prompt" ;;  # runtime failure: wofi fallback
     esac
   else
-    # wofi fallback (no GTK box): still start dictation, delayed so wofi has
-    # time to grab keyboard focus first.
+    # wofi fallback (no GTK box): built-in dictation needs the box.
+    stt_unavailable "it needs the GTK box (python-gobject + gtk-layer-shell)"
+    # Still start external dictation, delayed so wofi has time to grab
+    # keyboard focus first.
     [ -n "$ON_OPEN" ] && ( sleep 0.2; sh -c "$ON_OPEN" ) >/dev/null 2>&1 &
     spotlight_entry "$prompt"
   fi
@@ -140,8 +153,10 @@ EOF
 get_text() {
   # 1) arguments  2) stdin (real pipe/file)  3) centered Spotlight box
   if [ "$#" -gt 0 ]; then
+    [ "$STT_FLAG" = 1 ] && stt_unavailable "the text was given as arguments"
     printf '%s' "$*"
   elif [ -p /dev/stdin ] || [ -f /dev/stdin ]; then
+    [ "$STT_FLAG" = 1 ] && stt_unavailable "the text was given on stdin"
     cat
   else
     # Centered text box, focus ready: voice dictation types into it.
@@ -243,6 +258,11 @@ Usage: friendly [options] [text…]
                           (e.g. start dictation). Default: \$FRIENDLY_ON_OPEN.
   -c, --on-cancel CMD     Run CMD on cancel/Esc (e.g. stop dictation).
                           Default: \$FRIENDLY_ON_CANCEL.
+  -d, --dictate           Built-in dictation: record as the box opens, then
+                          transcribe (same as --stt auto).
+      --stt BACKEND       Built-in dictation with BACKEND: auto, handy,
+                          whisper, or a command reading the WAV at {wav}.
+                          Default: \$FRIENDLY_STT.
   -n, --no-copy           Print the result to stdout instead of copying.
   -h, --help              This help.
 
@@ -258,6 +278,8 @@ OVERRIDE_INSTRUCTION_SET=0
 OVERRIDE_STYLE=""
 ON_OPEN="${FRIENDLY_ON_OPEN:-}"     # command run when the box opens (e.g. start dictation)
 ON_CANCEL="${FRIENDLY_ON_CANCEL:-}" # command run when cancelled (e.g. stop dictation)
+STT="${FRIENDLY_STT:-}"             # built-in dictation backend (empty = off)
+STT_FLAG=0                          # 1 = asked on the command line (-d/--stt), not via env
 NO_COPY=0
 ARGS=()
 # require an argument for options that expect one (otherwise `shift 2` would
@@ -269,6 +291,8 @@ while [ "$#" -gt 0 ]; do
     -i|--instruction) need_arg "$@"; OVERRIDE_INSTRUCTION="$2"; OVERRIDE_INSTRUCTION_SET=1; shift 2 ;;
     -o|--on-open)     need_arg "$@"; ON_OPEN="$2"; shift 2 ;;
     -c|--on-cancel)   need_arg "$@"; ON_CANCEL="$2"; shift 2 ;;
+    -d|--dictate)     STT=auto; STT_FLAG=1; shift ;;
+    --stt)            need_arg "$@"; STT="$2"; STT_FLAG=1; shift 2 ;;
     -n|--no-copy)     NO_COPY=1; shift ;;
     -h|--help)        usage; exit 0 ;;
     --)               shift; ARGS+=("$@"); break ;;

@@ -94,6 +94,7 @@ spotlight_textarea() {
   [ -n "$ON_OPEN" ] && on_open_args=(--on-open "$ON_OPEN")
   # STT: built-in dictation backend (record + transcribe inside the box).
   [ -n "$STT" ] && on_open_args+=(--stt "$STT")
+  [ -n "$STT" ] && [ "$LISTEN" = 1 ] && on_open_args+=(--listen)
   if [ -n "$INPUT_PY" ] && have python3 \
      && python3 -c 'import gi; gi.require_version("GtkLayerShell","0.1")' 2>/dev/null
   then
@@ -258,11 +259,15 @@ Usage: friendly [options] [text…]
                           (e.g. start dictation). Default: \$FRIENDLY_ON_OPEN.
   -c, --on-cancel CMD     Run CMD on cancel/Esc (e.g. stop dictation).
                           Default: \$FRIENDLY_ON_CANCEL.
-  -d, --dictate           Built-in dictation: record as the box opens, then
-                          transcribe (same as --stt auto).
+  -d, --dictate           Built-in dictation (same as --stt auto): Ctrl+R or
+                          the Dictate button records, then transcribes.
       --stt BACKEND       Built-in dictation with BACKEND: auto, handy,
                           whisper, or a command reading the WAV at {wav}.
                           Default: \$FRIENDLY_STT.
+  -l, --listen            Start recording as soon as the box opens. Turns
+                          built-in dictation on (auto backend unless --stt or
+                          \$FRIENDLY_STT is set). Also on when \$FRIENDLY_LISTEN
+                          is 1, true, yes or on.
   -n, --no-copy           Print the result to stdout instead of copying.
   -h, --help              This help.
 
@@ -280,6 +285,10 @@ ON_OPEN="${FRIENDLY_ON_OPEN:-}"     # command run when the box opens (e.g. start
 ON_CANCEL="${FRIENDLY_ON_CANCEL:-}" # command run when cancelled (e.g. stop dictation)
 STT="${FRIENDLY_STT:-}"             # built-in dictation backend (empty = off)
 STT_FLAG=0                          # 1 = asked on the command line (-d/--stt), not via env
+case "${FRIENDLY_LISTEN:-}" in      # 1 = start recording as soon as the box opens
+  1|[Tt][Rr][Uu][Ee]|[Yy][Ee][Ss]|[Oo][Nn]) LISTEN=1 ;;
+  *) LISTEN=0 ;;
+esac
 NO_COPY=0
 ARGS=()
 # require an argument for options that expect one (otherwise `shift 2` would
@@ -293,6 +302,7 @@ while [ "$#" -gt 0 ]; do
     -c|--on-cancel)   need_arg "$@"; ON_CANCEL="$2"; shift 2 ;;
     -d|--dictate)     STT=auto; STT_FLAG=1; shift ;;
     --stt)            need_arg "$@"; STT="$2"; STT_FLAG=1; shift 2 ;;
+    -l|--listen)      LISTEN=1; STT_FLAG=1; shift ;;
     -n|--no-copy)     NO_COPY=1; shift ;;
     -h|--help)        usage; exit 0 ;;
     --)               shift; ARGS+=("$@"); break ;;
@@ -300,6 +310,8 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 set -- "${ARGS[@]+"${ARGS[@]}"}"
+# --listen needs a backend: default to auto when none was given.
+[ "$LISTEN" = 1 ] && [ -z "$STT" ] && STT=auto
 
 have claude || die "The 'claude' CLI was not found in PATH."
 # Fail fast BEFORE calling claude if we won't be able to copy the result

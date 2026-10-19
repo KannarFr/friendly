@@ -1,18 +1,20 @@
 #!/usr/bin/env python3
 """friendly — centered multiline text box (layer-shell overlay), Spotlight look.
 
-Usage: friendly-input.py [--on-open CMD] [--stt BACKEND] [prompt]
+Usage: friendly-input.py [--on-open CMD] [--stt BACKEND] [--listen] [prompt]
   Enter         submit (prints the text to stdout, exit 0)
   Shift+Enter   new line
   Esc           cancel (nothing on stdout, exit 1)
+  Every shortcut also has a button, labelled with its key.
   --on-open CMD run CMD (shell) once the window is shown and focused
                 — e.g. start dictation that types into the field.
-  --stt BACKEND built-in dictation: record the mic as soon as the box opens,
-                transcribe with BACKEND and insert the text in the field.
+  --stt BACKEND built-in dictation: Ctrl+R (or the Dictate button) records the
+                mic, then BACKEND transcribes it into the field.
                 BACKEND: auto | handy | whisper | a shell command (the WAV
                 path replaces {wav}, or is appended), text read from stdout.
-                While recording: Enter = stop & transcribe,
-                Ctrl+Enter = stop, transcribe & submit. Ctrl+R = record again.
+                While recording: Enter or Ctrl+R = stop & transcribe,
+                Ctrl+Enter = stop, transcribe & submit.
+  --listen      start recording as soon as the box opens (needs --stt).
 """
 import array
 import json
@@ -31,10 +33,11 @@ gi.require_version("Gtk", "3.0")
 gi.require_version("GtkLayerShell", "0.1")
 from gi.repository import GLib, Gtk, Gdk, GtkLayerShell  # noqa: E402
 
-# Parse argv: --on-open CMD, --stt BACKEND + a positional prompt.
+# Parse argv: --on-open CMD, --stt BACKEND, --listen + a positional prompt.
 _args = sys.argv[1:]
 ON_OPEN = ""
 STT = ""
+LISTEN = False
 _rest = []
 _i = 0
 while _i < len(_args):
@@ -44,14 +47,14 @@ while _i < len(_args):
     elif _args[_i] == "--stt" and _i + 1 < len(_args):
         STT = _args[_i + 1]
         _i += 2
+    elif _args[_i] == "--listen":
+        LISTEN = True
+        _i += 1
     else:
         _rest.append(_args[_i])
         _i += 1
 PROMPT = _rest[0] if _rest else "Dictate your message"
 
-HINT_TYPING = "Enter = submit   ·   Shift+Enter = new line   ·   Esc = cancel"
-HINT_TYPING_STT = HINT_TYPING + "   ·   Ctrl+R = dictate"
-HINT_RECORDING = "Enter = stop & transcribe   ·   Ctrl+Enter = stop & submit   ·   Esc = cancel"
 
 CSS = b"""
 window { background-color: rgba(0,0,0,0);
@@ -78,7 +81,19 @@ window { background-color: rgba(0,0,0,0);
 #level trough { background-color: rgba(255,255,255,0.06); border: none; min-height: 4px; }
 #level block.filled { background-color: #ff8f8f; border: none; min-height: 4px; }
 #level block.empty { background-color: transparent; border: none; }
-#hint { color: #6b6f76; font-size: 12px; margin: 10px 8px 2px 8px; }
+#bar { margin: 12px 2px 0 2px; }
+#bar button {
+  background-image: none; background-color: rgba(255,255,255,0.06);
+  color: #dcdce0; border: none; border-radius: 10px; box-shadow: none;
+  text-shadow: none; padding: 6px 12px; font-size: 13px;
+}
+#bar button:hover { background-color: rgba(255,255,255,0.12); }
+#bar button:disabled { opacity: 0.4; }
+#bar button.primary { background-color: rgba(120,140,255,0.30); color: #fff; }
+#bar button.primary:hover { background-color: rgba(120,140,255,0.42); }
+#bar button.rec { background-color: rgba(255,143,143,0.22); color: #fff; }
+#bar button.rec:hover { background-color: rgba(255,143,143,0.34); }
+#bar .key { color: #8a8f98; font-size: 12px; margin-left: 8px; }
 """
 
 result = {"text": None}
@@ -206,9 +221,10 @@ class Dictation:
 
     MIN_AUDIO = 3200  # bytes: 100 ms at 16 kHz s16 mono
 
-    def __init__(self, backend, view, status, level, hint):
+    def __init__(self, backend, view, status, level, on_change):
         self.backend = backend
-        self.view, self.status, self.level, self.hint = view, status, level, hint
+        self.view, self.status, self.level = view, status, level
+        self.on_change = on_change  # called when recording/busy changes
         self.proc = None  # recorder
         self.wav = None  # file being recorded
         self.files = set()  # every temp WAV not yet deleted
@@ -256,7 +272,7 @@ class Dictation:
         self.wav = wav
         self.started = time.monotonic()
         self.level.set_visible(True)
-        self.hint.set_text(HINT_RECORDING)
+        self.on_change()
         self._set_status("●  Listening…  0:00")
         GLib.timeout_add(80, self._tick)
 
@@ -301,11 +317,21 @@ class Dictation:
         proc, wav = self.proc, self.wav
         self.proc = self.wav = None
         self.level.set_visible(False)
-        self.hint.set_text(HINT_TYPING_STT)
         self.busy = True
-        self._set_status("⏳  Transcribing…", "busy")
+        self.on_change()
+        self._show_transcribing()
         threading.Thread(target=self._transcribe, args=(proc, wav, died),
                          daemon=True).start()
+
+    def _show_transcribing(self):
+        then = ", then submitting" if self.submit_after else ""
+        self._set_status("⏳  Transcribing%s…" % then, "busy")
+
+    def queue_submit(self):
+        """Submit as soon as the transcription in flight lands."""
+        self.submit_after = True
+        self._show_transcribing()
+        self.on_change()
 
     def _transcribe(self, proc, wav, died):
         text = err = None
@@ -329,6 +355,7 @@ class Dictation:
     def _done(self, text, err):
         self.busy = False
         submit_after, self.submit_after = self.submit_after, False
+        self.on_change()
         if err:
             self._set_status(err, "error")
             return False
@@ -366,26 +393,112 @@ def submit(view):
     Gtk.main_quit()
 
 
-def on_key(_win, event, view, dictation):
+class Actions:
+    """What each shortcut does; the buttons call the same methods."""
+
+    def __init__(self, view):
+        self.view = view
+        self.dictation = None
+
+    def enter(self, ctrl=False):
+        d = self.dictation
+        if d and d.recording:
+            d.stop(submit=ctrl)
+        elif d and d.busy:
+            d.queue_submit()
+        else:
+            submit(self.view)
+
+    def newline(self):
+        # Like typing it: replace the selection, then keep the cursor in view.
+        buf, editable = self.view.get_buffer(), self.view.get_editable()
+        buf.begin_user_action()
+        buf.delete_selection(True, editable)
+        buf.insert_interactive_at_cursor("\n", -1, editable)
+        buf.end_user_action()
+        self.view.scroll_mark_onscreen(buf.get_insert())
+
+    def dictate(self):
+        # Ctrl+R toggles: start recording, or stop and transcribe.
+        d = self.dictation
+        if d and d.recording:
+            d.stop()
+        elif d:
+            d.start()
+
+    def cancel(self):
+        Gtk.main_quit()
+
+
+def on_key(_win, event, actions):
     ctrl = event.state & Gdk.ModifierType.CONTROL_MASK
     if event.keyval == Gdk.KEY_Escape:
-        Gtk.main_quit()
+        actions.cancel()
         return True
-    if dictation and ctrl and event.keyval in (Gdk.KEY_r, Gdk.KEY_R):
-        dictation.start()
+    if actions.dictation and ctrl and event.keyval in (Gdk.KEY_r, Gdk.KEY_R):
+        actions.dictate()
         return True
     if event.keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter):
         if event.state & Gdk.ModifierType.SHIFT_MASK:
             return False  # let a newline be inserted, whatever the dictation state
-        if dictation and dictation.recording:
-            dictation.stop(submit=bool(ctrl))
-            return True
-        if dictation and dictation.busy:
-            dictation.submit_after = True  # submit as soon as the text lands
-            return True
-        submit(view)
+        actions.enter(ctrl=bool(ctrl))
         return True
     return False
+
+
+class Bar:
+    """Row of buttons, one per shortcut, each showing its key."""
+
+    def __init__(self, actions, view):
+        self.actions, self.view = actions, view
+        self.box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self.box.set_name("bar")
+        self.dictate = self._button("Dictate", "Ctrl+R", actions.dictate)
+        self.box.pack_start(self.dictate, False, False, 0)
+        self.newline = self._button("New line", "Shift+Enter", actions.newline)
+        self.box.pack_start(self.newline, False, False, 0)
+        self.submit = self._button("Submit", "Enter", lambda: actions.enter())
+        self.submit.get_style_context().add_class("primary")
+        self.box.pack_end(self.submit, False, False, 0)
+        self.stop_submit = self._button("Stop & submit", "Ctrl+Enter",
+                                        lambda: actions.enter(ctrl=True))
+        self.box.pack_end(self.stop_submit, False, False, 0)
+        self.cancel = self._button("Cancel", "Esc", actions.cancel)
+        self.box.pack_end(self.cancel, False, False, 0)
+        # Shown only with dictation / while recording.
+        self.dictate.set_no_show_all(True)
+        self.dictate.get_child().show_all()
+        self.stop_submit.set_no_show_all(True)
+        self.stop_submit.get_child().show_all()
+
+    def _button(self, text, key, action):
+        b = Gtk.Button()
+        b.set_can_focus(False)  # the text field keeps the keyboard
+        inner = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        b.text = Gtk.Label(label=text)
+        inner.pack_start(b.text, False, False, 0)
+        k = Gtk.Label(label=key)
+        k.get_style_context().add_class("key")
+        inner.pack_start(k, False, False, 0)
+        b.add(inner)
+        b.connect("clicked", lambda _b: (action(), self.view.grab_focus()))
+        return b
+
+    def update(self):
+        d = self.actions.dictation
+        recording = bool(d and d.recording)
+        busy = bool(d and d.busy)
+        self.dictate.set_visible(d is not None)
+        self.dictate.set_sensitive(not busy)
+        self.dictate.text.set_text("■  Stop" if recording else "●  Dictate")
+        ctx = self.dictate.get_style_context()
+        (ctx.add_class if recording else ctx.remove_class)("rec")
+        self.stop_submit.set_visible(recording)
+        queued = busy and d.submit_after
+        self.submit.set_sensitive(not queued)
+        self.submit.text.set_text("Stop & transcribe" if recording
+                                  else "Submitting after transcription…" if queued
+                                  else "Submit")
 
 
 def main():
@@ -434,19 +547,21 @@ def main():
     scroll.add(view)
     outer.pack_start(scroll, True, True, 0)
 
-    hint = Gtk.Label(label=HINT_TYPING_STT if STT else HINT_TYPING, xalign=0)
-    hint.set_name("hint")
-    outer.pack_start(hint, False, False, 0)
+    actions = Actions(view)
+    bar = Bar(actions, view)
+    outer.pack_start(bar.box, False, False, 0)
 
-    dictation = Dictation(STT, view, status, level, hint) if STT else None
+    dictation = Dictation(STT, view, status, level, bar.update) if STT else None
+    actions.dictation = dictation
+    bar.update()
 
     win.add(outer)
-    win.connect("key-press-event", on_key, view, dictation)
+    win.connect("key-press-event", on_key, actions)
     win.connect("destroy", Gtk.main_quit)
     win.show_all()
     view.grab_focus()
 
-    if dictation:
+    if dictation and LISTEN:
         dictation.start()
 
     # Once the window is mapped/focused, run the on-open command (e.g.

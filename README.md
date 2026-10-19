@@ -24,7 +24,7 @@ Arch + Sway.
 </p>
 
 <p align="center">
-  <em>One hotkey: the box opens and dictation auto-starts; speak, pick a tone, paste the rewrite.</em>
+  <em>One hotkey opens the box (with <code>-l</code>, dictation starts with it); speak, pick a tone, paste the rewrite.</em>
 </p>
 
 ## Why
@@ -52,7 +52,8 @@ Claude Code; `friendly` just handles the UI and the clipboard.
 
 - **Input** — a multiline text area rendered as a centered `wlr-layer-shell` overlay
   (so it's never tiled by your compositor). `Enter` submits, `Shift+Enter` adds a
-  newline, `Esc` cancels.
+  newline, `Esc` cancels. Every shortcut also has a button below the field, labelled
+  with its key.
 - **Tone** — a `wofi` Spotlight bar lists presets plus a free-form *Custom…* option.
 - **Rewrite** — the message + tone are sent to **`claude -p`** (Claude Code's
   non-interactive mode). It uses your existing Claude Code login — no API key to
@@ -145,14 +146,19 @@ bind = $mainMod, Y, exec, friendly
 
 ### Built-in (recommended)
 
-`friendly -d` records the mic as soon as the box opens and shows a **● Listening**
-indicator with a level meter. Press `Enter` to stop: the audio is transcribed and the
-text lands in the field, ready to edit. Press `Enter` again to submit. `Ctrl+Enter`
-stops and submits in one go, `Ctrl+R` records more (the text is appended), and `Esc`
-cancels.
+`friendly -d` adds a **● Dictate** button (`Ctrl+R`) to the box. It records the mic and
+shows a **● Listening** indicator with a level meter. Press `Enter` (or `Ctrl+R`, or
+**Stop**) to stop: the audio is transcribed and the text lands in the field, ready to
+edit. Press `Enter` again to submit. `Ctrl+Enter` stops and submits in one go,
+`Ctrl+R` again records more (the text is appended), and `Esc` cancels. Each of these
+has a button showing its shortcut.
+
+To start recording as soon as the box opens, add `-l` (`--listen`, or set
+`FRIENDLY_LISTEN` to `1`/`true`/`yes`/`on`). It turns built-in dictation on by
+itself, with the `auto` backend unless `--stt` or `FRIENDLY_STT` picks another:
 
 ```
-bindsym $mod+y exec /usr/bin/friendly -d
+bindsym $mod+y exec /usr/bin/friendly -l
 ```
 
 The speech-to-text **backend** is pluggable, with `--stt BACKEND` (or `FRIENDLY_STT`):
@@ -212,7 +218,8 @@ echo "my text" | friendly -s Concise -n     # from a pipe, result on stdout
 | `-i, --instruction TEXT` | free-form tone instruction (skip the menu) |
 | `-o, --on-open CMD` | run `CMD` when the box opens (e.g. start dictation); env: `FRIENDLY_ON_OPEN` |
 | `-c, --on-cancel CMD` | run `CMD` on cancel/Esc (e.g. stop dictation); env: `FRIENDLY_ON_CANCEL` |
-| `-d, --dictate` | built-in dictation with the `auto` backend |
+| `-d, --dictate` | built-in dictation with the `auto` backend (start with `Ctrl+R` or the Dictate button) |
+| `-l, --listen` | start recording as soon as the box opens (implies `-d`); env: `FRIENDLY_LISTEN` (`1`/`true`/`yes`/`on`) |
 | `--stt BACKEND` | built-in dictation with `BACKEND` (`auto`, `handy`, `whisper`, or a command); env: `FRIENDLY_STT` |
 | `-n, --no-copy` | print the result to stdout instead of copying |
 | `-h, --help` | help |

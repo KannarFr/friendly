@@ -155,7 +155,12 @@ has a button showing its shortcut.
 
 To start recording as soon as the box opens, add `-l` (`--listen`, or set
 `FRIENDLY_LISTEN` to `1`/`true`/`yes`/`on`). It turns built-in dictation on by
-itself, with the `auto` backend unless `--stt` or `FRIENDLY_STT` picks another:
+itself, with the `auto` backend unless `--stt` or `FRIENDLY_STT` picks another.
+With `-l`, dictation is also **live**: the recording is cut at your pauses (pieces of
+at least 4 s, at most 20 s) and each piece is transcribed in the background, so the
+text appears while you keep talking and only the last piece is left when you stop.
+Pieces are transcribed on their own, so a backend that guesses the language may
+guess on less context than with one recording:
 
 ```
 bindsym $mod+y exec /usr/bin/friendly -l
@@ -219,7 +224,7 @@ echo "my text" | friendly -s Concise -n     # from a pipe, result on stdout
 | `-o, --on-open CMD` | run `CMD` when the box opens (e.g. start dictation); env: `FRIENDLY_ON_OPEN` |
 | `-c, --on-cancel CMD` | run `CMD` on cancel/Esc (e.g. stop dictation); env: `FRIENDLY_ON_CANCEL` |
 | `-d, --dictate` | built-in dictation with the `auto` backend (start with `Ctrl+R` or the Dictate button) |
-| `-l, --listen` | start recording as soon as the box opens (implies `-d`); env: `FRIENDLY_LISTEN` (`1`/`true`/`yes`/`on`) |
+| `-l, --listen` | start recording as soon as the box opens and transcribe live, at your pauses (implies `-d`); env: `FRIENDLY_LISTEN` (`1`/`true`/`yes`/`on`) |
 | `--stt BACKEND` | built-in dictation with `BACKEND` (`auto`, `handy`, `whisper`, or a command); env: `FRIENDLY_STT` |
 | `-n, --no-copy` | print the result to stdout instead of copying |
 | `-h, --help` | help |

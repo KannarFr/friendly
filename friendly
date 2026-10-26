@@ -264,8 +264,10 @@ Usage: friendly [options] [text…]
       --stt BACKEND       Built-in dictation with BACKEND: auto, handy,
                           whisper, or a command reading the WAV at {wav}.
                           Default: \$FRIENDLY_STT.
-  -l, --listen            Start recording as soon as the box opens. Turns
-                          built-in dictation on (auto backend unless --stt or
+  -l, --listen            Start recording as soon as the box opens, and
+                          transcribe live: the text lands piece by piece, at
+                          your pauses, while you keep talking. Turns built-in
+                          dictation on (auto backend unless --stt or
                           \$FRIENDLY_STT is set). Also on when \$FRIENDLY_LISTEN
                           is 1, true, yes or on.
   -n, --no-copy           Print the result to stdout instead of copying.

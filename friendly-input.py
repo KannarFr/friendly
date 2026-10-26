@@ -14,11 +14,14 @@ Usage: friendly-input.py [--on-open CMD] [--stt BACKEND] [--listen] [prompt]
                 path replaces {wav}, or is appended), text read from stdout.
                 While recording: Enter or Ctrl+R = stop & transcribe,
                 Ctrl+Enter = stop, transcribe & submit.
-  --listen      start recording as soon as the box opens (needs --stt).
+  --listen      start recording as soon as the box opens (needs --stt), and
+                transcribe live: the recording is cut at pauses and each
+                piece lands in the field while you keep talking.
 """
 import array
 import json
 import os
+import queue
 import shlex
 import shutil
 import signal
@@ -27,6 +30,7 @@ import sys
 import tempfile
 import threading
 import time
+import wave
 import gi
 
 gi.require_version("Gtk", "3.0")
@@ -187,6 +191,19 @@ def recorder_cmd(wav):
     return None
 
 
+def _data_offset(head):
+    """Offset of the samples in a WAV whose first bytes are `head` (0 if none)."""
+    if head[:4] != b"RIFF" or head[8:12] != b"WAVE":
+        return 0
+    pos = 12
+    while pos + 8 <= len(head):
+        clen = int.from_bytes(head[pos + 4:pos + 8], "little")
+        if head[pos:pos + 4] == b"data":
+            return pos + 8
+        pos += 8 + clen + (clen & 1)
+    return 0
+
+
 def fix_wav_sizes(wav):
     """Rewrite the RIFF and data sizes from the file size.
 
@@ -195,33 +212,51 @@ def fix_wav_sizes(wav):
     """
     try:
         with open(wav, "r+b") as f:
-            head = f.read(4096)
+            off = _data_offset(f.read(4096))
             size = f.seek(0, os.SEEK_END)
-            if head[:4] != b"RIFF" or head[8:12] != b"WAVE":
+            if not off:
                 return 0
-            pos = 12
-            while pos + 8 <= len(head):
-                cid = head[pos:pos + 4]
-                clen = int.from_bytes(head[pos + 4:pos + 8], "little")
-                if cid == b"data":
-                    data = size - (pos + 8)
-                    f.seek(4)
-                    f.write((size - 8).to_bytes(4, "little"))
-                    f.seek(pos + 4)
-                    f.write(data.to_bytes(4, "little"))
-                    return max(0, data)
-                pos += 8 + clen + (clen & 1)
+            f.seek(4)
+            f.write((size - 8).to_bytes(4, "little"))
+            f.seek(off - 4)
+            f.write((size - off).to_bytes(4, "little"))
+            return max(0, size - off)
     except OSError:
         pass
     return 0
 
 
+def write_chunk(src, start, end):
+    """Copy the samples in bytes [start, end) of the WAV being recorded at
+    `src` into a new temp WAV (16 kHz s16 mono, like every recorder here)."""
+    with open(src, "rb") as f:
+        f.seek(start)
+        data = f.read(end - start)
+    fd, path = tempfile.mkstemp(prefix="friendly-chunk-", suffix=".wav")
+    with os.fdopen(fd, "wb") as raw, wave.open(raw, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(16000)
+        w.writeframes(data)
+    return path
+
+
 class Dictation:
-    """Records the mic into a temp WAV, then transcribes it off the UI thread."""
+    """Records the mic into a temp WAV, then transcribes it off the UI thread.
+
+    Live mode cuts the recording at pauses while it runs: each piece is
+    transcribed in the background, in order, and lands in the field when
+    ready, so only the last piece is left to wait for when recording stops.
+    """
 
     MIN_AUDIO = 3200  # bytes: 100 ms at 16 kHz s16 mono
+    BYTES_PER_SEC = 32000
+    LIVE_MIN = 4.0  # s: shorter pieces make the backend's language guess unreliable
+    LIVE_MAX = 20.0  # s: cut even without a pause
+    PAUSE = 0.35  # s of quiet that make a pause
+    QUIET = 0.03  # meter level (see _rms) under which the mic counts as quiet
 
-    def __init__(self, backend, view, status, level, on_change):
+    def __init__(self, backend, view, status, level, on_change, live=False):
         self.backend = backend
         self.view, self.status, self.level = view, status, level
         self.on_change = on_change  # called when recording/busy changes
@@ -232,6 +267,17 @@ class Dictation:
         self.started = 0.0
         self.busy = False  # transcription in flight
         self.submit_after = False
+        self.live = live
+        self.aborted = False
+        self.data_off = 0  # where the samples start in self.wav (0 = not known yet)
+        self.cut = 0  # offset in self.wav up to which pieces were sent
+        self.quiet_since = None
+        self.pending = 0  # live pieces sent while recording, not landed yet
+        self.heard = False  # a live piece produced text
+        self.live_err = None
+        self.pieces = queue.Queue()  # (piece WAV or None, final, error)
+        if live:
+            threading.Thread(target=self._live_worker, daemon=True).start()
 
     @property
     def recording(self):
@@ -271,6 +317,9 @@ class Dictation:
             return
         self.wav = wav
         self.started = time.monotonic()
+        self.data_off = self.cut = 0
+        self.quiet_since = self.live_err = None
+        self.heard = False
         self.level.set_visible(True)
         self.on_change()
         self._set_status("●  Listening…  0:00")
@@ -283,9 +332,76 @@ class Dictation:
             self._finish(died=True)  # still transcribe what it captured
             return False
         secs = int(time.monotonic() - self.started)
-        self._set_status("●  Listening…  %d:%02d" % (secs // 60, secs % 60))
-        self.level.set_value(self._rms())
+        lvl = self._rms()
+        self.level.set_value(lvl)
+        if self.live:
+            self._maybe_cut(lvl)
+        self._set_status("●  Listening…  %d:%02d%s" % (
+            secs // 60, secs % 60, "   ⏳ transcribing" if self.pending else ""))
         return True
+
+    def _maybe_cut(self, lvl):
+        # Send what was said since the last cut once it is long enough and
+        # the speaker pauses, so a piece rarely ends in the middle of a word.
+        now = time.monotonic()
+        if lvl >= self.QUIET:
+            self.quiet_since = None
+        elif self.quiet_since is None:
+            self.quiet_since = now
+        try:
+            if not self.data_off:
+                with open(self.wav, "rb") as f:
+                    self.data_off = self.cut = _data_offset(f.read(4096))
+                if not self.data_off:
+                    return  # header not written yet
+            end = os.path.getsize(self.wav)
+        except OSError:
+            return
+        end -= (end - self.data_off) % 2  # whole samples only
+        secs = (end - self.cut) / self.BYTES_PER_SEC
+        paused = self.quiet_since is not None and now - self.quiet_since >= self.PAUSE
+        if secs >= self.LIVE_MAX or (secs >= self.LIVE_MIN and paused):
+            self.pending += 1
+            self._send(self.wav, self.cut, end, final=False)
+            self.cut = end
+
+    def _send(self, wav, start, end, final, err=None):
+        """Queue the samples in [start, end) of `wav` for the live worker."""
+        piece = None
+        if end - start >= self.MIN_AUDIO:
+            try:
+                piece = write_chunk(wav, start, end)
+                self.files.add(piece)
+            except OSError as e:
+                err = err or "Transcription failed: %s" % e
+        self.pieces.put((piece, final, err))
+
+    def _live_worker(self):
+        # One piece at a time, in order, so the text lands in the order spoken.
+        while True:
+            piece, final, err = self.pieces.get()
+            text = None
+            if piece and not self.aborted:
+                try:
+                    text = transcribe(self.backend, piece, self.procs).strip()
+                except Exception as e:  # noqa: BLE001 — shown to the user
+                    err = "Transcription failed: %s" % (str(e) or e.__class__.__name__)
+            if piece:
+                self._unlink(piece)
+            if not self.aborted:
+                GLib.idle_add(self._live_landed, text or "", final, err)
+
+    def _live_landed(self, text, final, err):
+        if err:
+            self.live_err = err
+        if final:
+            self._done(text, self.live_err)
+            return False
+        self.pending -= 1
+        if text:
+            self.heard = True
+            self._append(text)
+        return False
 
     def _rms(self):
         # Loudness of the last ~100 ms written to the WAV (cosmetic meter).
@@ -320,8 +436,11 @@ class Dictation:
         self.busy = True
         self.on_change()
         self._show_transcribing()
-        threading.Thread(target=self._transcribe, args=(proc, wav, died),
-                         daemon=True).start()
+        if self.live:
+            target, args = self._finish_live, (proc, wav, died, self.data_off, self.cut)
+        else:
+            target, args = self._transcribe, (proc, wav, died)
+        threading.Thread(target=target, args=args, daemon=True).start()
 
     def _show_transcribing(self):
         then = ", then submitting" if self.submit_after else ""
@@ -333,14 +452,36 @@ class Dictation:
         self._show_transcribing()
         self.on_change()
 
+    @staticmethod
+    def _reap(proc):
+        try:
+            proc.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+
+    def _finish_live(self, proc, wav, died, data_off, cut):
+        # Queue what follows the last cut as the final piece, behind the
+        # pieces still in flight.
+        err = None
+        try:
+            self._reap(proc)
+            audio = fix_wav_sizes(wav)
+            if not data_off:
+                with open(wav, "rb") as f:
+                    data_off = cut = _data_offset(f.read(4096))
+            if audio < self.MIN_AUDIO:
+                err = "Recording stopped unexpectedly" if died else "No audio recorded"
+            self._send(wav, cut, data_off + audio, final=True, err=err)
+        except OSError as e:
+            self.pieces.put((None, True, "Transcription failed: %s" % e))
+        finally:
+            self._unlink(wav)
+
     def _transcribe(self, proc, wav, died):
         text = err = None
         try:
-            try:
-                proc.wait(timeout=3)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-                proc.wait()
+            self._reap(proc)
             # Normally a no-op; repairs the header if the recorder was killed.
             if fix_wav_sizes(wav) < self.MIN_AUDIO:
                 err = "Recording stopped unexpectedly" if died else "No audio recorded"
@@ -359,21 +500,27 @@ class Dictation:
         if err:
             self._set_status(err, "error")
             return False
-        self._set_status("" if text else "Nothing heard", "" if text else "error")
-        buf = self.view.get_buffer()
-        if text:
-            # Appending to existing text (Ctrl+R): keep a space between them.
-            end = buf.get_end_iter()
-            last = end.copy()
-            if last.backward_char() and not buf.get_text(last, end, True).isspace():
-                text = " " + text
-            buf.insert(end, text)
-        if submit_after and buf.get_char_count():
+        heard = bool(text) or self.heard
+        self._set_status("" if heard else "Nothing heard", "" if heard else "error")
+        self._append(text)
+        if submit_after and self.view.get_buffer().get_char_count():
             submit(self.view)
         return False
 
+    def _append(self, text):
+        if not text:
+            return
+        # Appending to existing text (Ctrl+R, live pieces): keep a space between them.
+        buf = self.view.get_buffer()
+        end = buf.get_end_iter()
+        last = end.copy()
+        if last.backward_char() and not buf.get_text(last, end, True).isspace():
+            text = " " + text
+        buf.insert(end, text)
+
     def abort(self):
         """Cancel: stop recording and transcription, delete every recording."""
+        self.aborted = True
         if self.proc:
             self.proc.kill()
             self.proc.wait()
@@ -551,7 +698,7 @@ def main():
     bar = Bar(actions, view)
     outer.pack_start(bar.box, False, False, 0)
 
-    dictation = Dictation(STT, view, status, level, bar.update) if STT else None
+    dictation = Dictation(STT, view, status, level, bar.update, live=LISTEN) if STT else None
     actions.dictation = dictation
     bar.update()
 

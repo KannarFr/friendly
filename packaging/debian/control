@@ -15,9 +15,9 @@ Depends: ${misc:Depends},
          gir1.2-gtk-3.0,
          gir1.2-gtklayershell-0.1,
          wl-clipboard
-Recommends: wofi,
-            libnotify-bin
-Suggests: rofi,
+Recommends: libnotify-bin
+Suggests: wofi,
+          rofi,
           pipewire-bin,
           zenity
 Description: Spotlight-style tone-rewrite overlay (via Claude Code)

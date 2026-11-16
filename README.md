@@ -44,7 +44,7 @@ Claude Code; `friendly` just handles the UI and the clipboard.
              └────────────┬─────────────┘
                           │ Enter
              ┌──────────────────────────┐
-             │  tone menu (wofi)        │   Professional · Kind · Concise · … · ✏️ Custom
+             │  tone menu (same overlay)│   Professional · Kind · Concise · … · ✏️ Custom
              └────────────┬─────────────┘
                           │
               claude -p ──▶  rewritten text  ──▶  📋 clipboard  +  🔔 notification
@@ -54,7 +54,9 @@ Claude Code; `friendly` just handles the UI and the clipboard.
   (so it's never tiled by your compositor). `Enter` submits, `Shift+Enter` adds a
   newline, `Esc` cancels. Every shortcut also has a button below the field, labelled
   with its key.
-- **Tone** — a `wofi` Spotlight bar lists presets plus a free-form *Custom…* option.
+- **Tone** — the same overlay lists the presets plus a *Custom…* option: type to
+  filter, `↑`/`↓` to move, `Enter` to pick (or to use what you typed when nothing
+  matches). Without layer-shell support it falls back to `wofi`, `rofi`, then `zenity`.
 - **Rewrite** — the message + tone are sent to **`claude -p`** (Claude Code's
   non-interactive mode). It uses your existing Claude Code login — no API key to
   manage. The model is told to return *only* the rewritten text.
@@ -120,7 +122,7 @@ The script finds its resources next to itself **or** in `~/.local/share/friendly
 ### macOS / X11
 
 Not supported. The UI is Wayland-only — the centered overlay needs
-`wlr-layer-shell` (via `gtk-layer-shell`), the menu uses `wofi`, and the clipboard
+`wlr-layer-shell` (via `gtk-layer-shell`), and the clipboard
 uses `wl-copy`. Only `claude -p` is cross-platform. A macOS port would mean
 replacing the UI layer (e.g. a native SwiftUI panel or Hammerspoon/Raycast) and
 using `pbcopy`; the rewrite logic and prompt would carry over unchanged. Not
@@ -243,8 +245,8 @@ Professional|a professional, clear and composed tone
 Concise|a more concise and direct phrasing, keeping the essentials
 ```
 
-**Look** — tweak `spotlight.css` (the `wofi` bars) and the inline CSS in
-`friendly-input.py` (the text area): colors, radius, font size, width.
+**Look** — tweak `spotlight.css` (the `wofi` fallback bars) and the inline CSS in
+`friendly-input.py` (the text area and tone menu): colors, radius, font size, width.
 
 ## Dependencies
 
@@ -253,9 +255,9 @@ All in the official Arch repos except Claude Code:
 | Package | Role |
 | --- | --- |
 | `claude-code` *(AUR / npm)* | the LLM backend — `claude -p` (**required**) |
-| `python` + `python-gobject` + `gtk-layer-shell` + `gtk3` | the centered text area |
+| `python` + `python-gobject` + `gtk-layer-shell` + `gtk3` | the centered text area and tone menu |
 | `wl-clipboard` | clipboard (`wl-copy`) |
-| `wofi` | tone menu *(falls back to `rofi`, then `zenity`)* |
+| `wofi` / `rofi` / `zenity` | fallback menus when layer-shell is unavailable *(optional)* |
 | `libnotify` | notifications *(optional but recommended)* |
 | `handy` / `handy-bin` *(AUR)* or `whisper.cpp-git` *(AUR)* | speech-to-text for `-d` *(optional)* |
 | `pipewire-audio` | mic recording for `-d` (`pw-record`) *(optional)* |

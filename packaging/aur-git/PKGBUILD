@@ -17,9 +17,9 @@ depends=(
 )
 optdepends=(
   'claude-code: LLM backend — friendly calls `claude -p` (REQUIRED at runtime; AUR, or `npm i -g @anthropic-ai/claude-code`)'
-  'wofi: Spotlight-style menu/launcher (recommended; falls back to rofi/zenity)'
+  'wofi: fallback menus when the compositor lacks layer-shell'
   'libnotify: desktop notifications (result + progress)'
-  'rofi: fallback launcher if wofi is missing'
+  'rofi: fallback menus if wofi is missing too'
   'zenity: last-resort fallback dialogs'
   'handy: speech-to-text backend for built-in dictation, --dictate (AUR: handy or handy-bin)'
   'whisper.cpp-git: alternative speech-to-text backend, --stt whisper (AUR; plus a ggml model)'

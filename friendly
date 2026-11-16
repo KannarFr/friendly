@@ -3,8 +3,8 @@
 # friendly — rewrite a dictated/typed message in a chosen tone (pro, kind,
 # concise…) via the `claude` CLI, then copy the result to the clipboard.
 #
-# Flow: centered "Spotlight" box (wofi) to dictate/type the message
-#       → "Spotlight" tone menu
+# Flow: centered "Spotlight" box (GTK layer-shell) to dictate/type the message
+#       → "Spotlight" tone menu (same GTK box; wofi/rofi/zenity as fallbacks)
 #       → generation by `claude -p`
 #       → copy (wl-copy) + notification.
 #
@@ -84,6 +84,12 @@ spotlight_entry() {
   fi
 }
 
+# The GTK layer-shell box (friendly-input.py) is usable here.
+have_gtk_box() {
+  [ -n "$INPUT_PY" ] && have python3 \
+    && python3 -c 'import gi; gi.require_version("GtkLayerShell","0.1")' 2>/dev/null
+}
+
 # Centered MULTILINE text box (GTK overlay). Fallback: single-line wofi bar.
 # friendly-input.py: 0 = submitted (text on stdout), 1 = cancelled, other =
 # runtime failure (e.g. layer-shell unsupported) → fall back to wofi.
@@ -95,9 +101,7 @@ spotlight_textarea() {
   # STT: built-in dictation backend (record + transcribe inside the box).
   [ -n "$STT" ] && on_open_args+=(--stt "$STT")
   [ -n "$STT" ] && [ "$LISTEN" = 1 ] && on_open_args+=(--listen)
-  if [ -n "$INPUT_PY" ] && have python3 \
-     && python3 -c 'import gi; gi.require_version("GtkLayerShell","0.1")' 2>/dev/null
-  then
+  if have_gtk_box; then
     if python3 -B "$INPUT_PY" "${on_open_args[@]}" "$prompt"; then rc=0; else rc=$?; fi
     case "$rc" in
       0|1) return "$rc" ;;          # submitted / cancelled: propagate as-is
@@ -114,8 +118,20 @@ spotlight_textarea() {
   fi
 }
 
-# Spotlight bar to PICK from a list.  spotlight_list "Prompt" item1 item2…
+# Spotlight box to PICK from a list.  spotlight_list "Prompt" item1 item2…
+# Prints the chosen item, or the typed text when it matches none.
 spotlight_list() {
+  local prompt="$1" rc; shift
+  if have_gtk_box; then
+    if python3 -B "$INPUT_PY" --list "$prompt" "$@"; then rc=0; else rc=$?; fi
+    case "$rc" in
+      0|1) return "$rc" ;;          # picked / cancelled
+    esac                            # runtime failure: launcher fallbacks below
+  fi
+  spotlight_list_launcher "$prompt" "$@"
+}
+
+spotlight_list_launcher() {
   local prompt="$1"; shift
   if have wofi; then
     printf '%s\n' "$@" | wofi --dmenu --prompt "$prompt" --cache-file /dev/null \
@@ -201,7 +217,7 @@ choose_instruction() {
   [ -z "$choice" ] && return 1
 
   if [ "$choice" = "$custom" ]; then
-    choice="$(spotlight_entry "Describe the tone")" || return 1
+    choice="$(ON_OPEN='' STT='' spotlight_textarea "Describe the tone")" || return 1
     [ -z "$choice" ] && return 1
     printf '%s\t%s' "Custom" "$choice"
     return

@@ -22,7 +22,7 @@ The deps map per distro:
 | GTK 3 | `gtk3` | `gir1.2-gtk-3.0` | `x11-libs/gtk+:3` |
 | layer-shell | `gtk-layer-shell` | `gir1.2-gtklayershell-0.1` | `gui/gtk-layer-shell` |
 | clipboard | `wl-clipboard` | `wl-clipboard` | `sys-apps/wl-clipboard` |
-| menu | `wofi` | `wofi` | `gui/wofi` |
+| fallback menu *(optional)* | `wofi` | `wofi` | `gui/wofi` |
 | notify | `libnotify` | `libnotify-bin` | `x11-libs/libnotify` |
 
 ## How releasing works

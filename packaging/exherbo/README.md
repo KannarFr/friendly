@@ -30,7 +30,7 @@ adjust to what your synced repos provide:
 | GTK 3 | `x11-libs/gtk+:3` | |
 | gtk-layer-shell | `gui/gtk-layer-shell` | **may be absent from ::arbor** — add to a personal repo if needed |
 | wl-clipboard | `sys-apps/wl-clipboard` | provides `wl-copy` |
-| wofi (suggestion) | `gui/wofi` | tone menu; falls back to rofi/zenity |
+| wofi (suggestion) | `gui/wofi` | fallback menus when the compositor lacks layer-shell |
 | libnotify (suggestion) | `x11-libs/libnotify` | notifications |
 
 `claude-code` (the `claude` CLI) is **required at runtime** and is not in Exherbo —

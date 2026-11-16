@@ -2,6 +2,7 @@
 """friendly — centered multiline text box (layer-shell overlay), Spotlight look.
 
 Usage: friendly-input.py [--on-open CMD] [--stt BACKEND] [--listen] [prompt]
+       friendly-input.py --list prompt item…
   Enter         submit (prints the text to stdout, exit 0)
   Shift+Enter   new line
   Esc           cancel (nothing on stdout, exit 1)
@@ -17,6 +18,9 @@ Usage: friendly-input.py [--on-open CMD] [--stt BACKEND] [--listen] [prompt]
   --listen      start recording as soon as the box opens (needs --stt), and
                 transcribe live: the recording is cut at pauses and each
                 piece lands in the field while you keep talking.
+  --list        pick one of the items instead of typing a message: typing
+                filters them, Up/Down move, Enter prints the highlighted item
+                (or the typed text when nothing matches), Esc cancels.
 """
 import array
 import json
@@ -42,6 +46,7 @@ _args = sys.argv[1:]
 ON_OPEN = ""
 STT = ""
 LISTEN = False
+LIST = False
 _rest = []
 _i = 0
 while _i < len(_args):
@@ -54,10 +59,14 @@ while _i < len(_args):
     elif _args[_i] == "--listen":
         LISTEN = True
         _i += 1
+    elif _args[_i] == "--list":
+        LIST = True
+        _i += 1
     else:
         _rest.append(_args[_i])
         _i += 1
-PROMPT = _rest[0] if _rest else "Dictate your message"
+PROMPT = _rest[0] if _rest else ("Pick one" if LIST else "Dictate your message")
+ITEMS = _rest[1:] if LIST else []
 
 
 CSS = b"""
@@ -98,6 +107,20 @@ window { background-color: rgba(0,0,0,0);
 #bar button.rec { background-color: rgba(255,143,143,0.22); color: #fff; }
 #bar button.rec:hover { background-color: rgba(255,143,143,0.34); }
 #bar .key { color: #8a8f98; font-size: 12px; margin-left: 8px; }
+#filter {
+  font-size: 16px; color: #f4f4f6; caret-color: #9bb0ff;
+  background-image: none; background-color: rgba(255,255,255,0.06);
+  border: none; border-radius: 14px; box-shadow: none; padding: 12px 16px;
+}
+#filter selection { background-color: rgba(120,140,255,0.35); color: #fff; }
+#items { background-color: transparent; margin-top: 10px; }
+#items row {
+  color: #dcdce0; font-size: 15px; padding: 9px 16px;
+  border-radius: 12px; background-color: transparent;
+}
+#items row:hover { background-color: rgba(255,255,255,0.06); }
+#items row:selected { background-color: rgba(120,140,255,0.30); color: #fff; }
+#empty { color: #8a8f98; font-size: 13px; margin: 12px 8px 2px 8px; }
 """
 
 result = {"text": None}
@@ -619,17 +642,7 @@ class Bar:
         self.stop_submit.get_child().show_all()
 
     def _button(self, text, key, action):
-        b = Gtk.Button()
-        b.set_can_focus(False)  # the text field keeps the keyboard
-        inner = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
-        b.text = Gtk.Label(label=text)
-        inner.pack_start(b.text, False, False, 0)
-        k = Gtk.Label(label=key)
-        k.get_style_context().add_class("key")
-        inner.pack_start(k, False, False, 0)
-        b.add(inner)
-        b.connect("clicked", lambda _b: (action(), self.view.grab_focus()))
-        return b
+        return button(text, key, action, self.view)
 
     def update(self):
         d = self.actions.dictation
@@ -648,13 +661,14 @@ class Bar:
                                   else "Submit")
 
 
-def main():
+def overlay(height):
+    """Centered layer-shell surface with the Spotlight look: (window, box)."""
     win = Gtk.Window()
     GtkLayerShell.init_for_window(win)
     GtkLayerShell.set_layer(win, GtkLayerShell.Layer.OVERLAY)
     GtkLayerShell.set_keyboard_mode(win, GtkLayerShell.KeyboardMode.EXCLUSIVE)
     # no anchoring -> centered surface
-    win.set_size_request(900, 460)
+    win.set_size_request(900, height)
 
     prov = Gtk.CssProvider()
     prov.load_from_data(CSS)
@@ -668,6 +682,156 @@ def main():
     label = Gtk.Label(label=PROMPT, xalign=0)
     label.set_name("prompt")
     outer.pack_start(label, False, False, 0)
+    win.add(outer)
+    win.connect("destroy", Gtk.main_quit)
+    return win, outer
+
+
+def button(text, key, action, refocus):
+    """Bar button labelled with its shortcut; never takes the keyboard."""
+    b = Gtk.Button()
+    b.set_can_focus(False)
+    inner = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+    b.text = Gtk.Label(label=text)
+    inner.pack_start(b.text, False, False, 0)
+    k = Gtk.Label(label=key)
+    k.get_style_context().add_class("key")
+    inner.pack_start(k, False, False, 0)
+    b.add(inner)
+    b.connect("clicked", lambda _b: (action(), refocus.grab_focus()))
+    return b
+
+
+# --- list mode (--list) ------------------------------------------------------
+
+
+class Picker:
+    """Filterable list: the entry keeps the keyboard, Up/Down move the row."""
+
+    def __init__(self, items):
+        self.entry = Gtk.Entry()
+        self.entry.set_name("filter")
+        self.entry.set_placeholder_text("Type to filter, or to describe your own…")
+        self.listbox = Gtk.ListBox()
+        self.listbox.set_name("items")
+        self.listbox.set_selection_mode(Gtk.SelectionMode.BROWSE)
+        self.listbox.set_can_focus(False)
+        for item in items:
+            row = Gtk.ListBoxRow()
+            row.set_can_focus(False)
+            row.item = item
+            row.add(Gtk.Label(label=item, xalign=0))
+            self.listbox.add(row)
+        self.listbox.set_filter_func(self._visible)
+        self.listbox.connect("row-activated", lambda _l, row: self.pick(row.item))
+        self.entry.connect("changed", self._refilter)
+        self.empty = Gtk.Label(label="No match: Enter uses what you typed", xalign=0)
+        self.empty.set_name("empty")
+        self.empty.set_no_show_all(True)
+
+    def _query(self):
+        return self.entry.get_text().strip().casefold()
+
+    def _visible(self, row):
+        return self._query() in row.item.casefold()
+
+    def _rows(self):
+        return [r for r in self.listbox.get_children() if self._visible(r)]
+
+    def _refilter(self, _entry=None):
+        self.listbox.invalidate_filter()
+        rows = self._rows()
+        self.listbox.select_row(rows[0] if rows else None)
+        self.empty.set_visible(not rows)
+
+    def move(self, step):
+        rows = self._rows()
+        if not rows:
+            return
+        cur = self.listbox.get_selected_row()
+        i = rows.index(cur) + step if cur in rows else 0
+        row = rows[max(0, min(len(rows) - 1, i))]
+        self.listbox.select_row(row)
+        _scroll_to(row)
+
+    def enter(self):
+        row = self.listbox.get_selected_row()
+        if row is not None and self._visible(row):
+            self.pick(row.item)
+        elif self.entry.get_text().strip():
+            self.pick(self.entry.get_text().strip())  # free text, no match
+
+    def pick(self, text):
+        result["text"] = text
+        Gtk.main_quit()
+
+
+def _scroll_to(row):
+    # row → ListBox → Viewport → ScrolledWindow
+    scroll = row.get_parent().get_parent().get_parent()
+    adj = scroll.get_vadjustment()
+    a = row.get_allocation()
+    if a.y < adj.get_value():
+        adj.set_value(a.y)
+    elif a.y + a.height > adj.get_value() + adj.get_page_size():
+        adj.set_value(a.y + a.height - adj.get_page_size())
+
+
+def main_list():
+    win, outer = overlay(-1)
+    picker = Picker(ITEMS)
+    outer.pack_start(picker.entry, False, False, 0)
+    scroll = Gtk.ScrolledWindow()
+    scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+    scroll.set_propagate_natural_height(True)
+    scroll.set_max_content_height(420)
+    scroll.add(picker.listbox)
+    outer.pack_start(scroll, True, True, 0)
+    outer.pack_start(picker.empty, False, False, 0)
+
+    bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+    bar.set_name("bar")
+    pick = button("Pick", "Enter", picker.enter, picker.entry)
+    pick.get_style_context().add_class("primary")
+    bar.pack_end(pick, False, False, 0)
+    bar.pack_end(button("Cancel", "Esc", Gtk.main_quit, picker.entry), False, False, 0)
+    outer.pack_start(bar, False, False, 0)
+
+    def on_list_key(_win, event):
+        k = event.keyval
+        if k == Gdk.KEY_Escape:
+            Gtk.main_quit()
+        elif k in (Gdk.KEY_Return, Gdk.KEY_KP_Enter):
+            picker.enter()
+        elif k in (Gdk.KEY_Down, Gdk.KEY_KP_Down) or (
+                k == Gdk.KEY_Tab and not event.state & Gdk.ModifierType.SHIFT_MASK):
+            picker.move(1)
+        elif k in (Gdk.KEY_Up, Gdk.KEY_KP_Up, Gdk.KEY_ISO_Left_Tab, Gdk.KEY_Tab):
+            picker.move(-1)
+        elif k in (Gdk.KEY_Page_Down, Gdk.KEY_KP_Page_Down):
+            picker.move(5)
+        elif k in (Gdk.KEY_Page_Up, Gdk.KEY_KP_Page_Up):
+            picker.move(-5)
+        else:
+            return False
+        return True
+
+    win.connect("key-press-event", on_list_key)
+    win.show_all()
+    picker._refilter()  # highlight the first item: Enter picks the default
+    picker.entry.grab_focus()
+    Gtk.main()
+
+    if result["text"] is None:
+        sys.exit(1)  # cancelled
+    sys.stdout.write(result["text"])
+
+
+# --- text mode -----------------------------------------------------------------
+
+
+def main():
+    win, outer = overlay(460)
 
     # Dictation status + mic level (only shown with --stt).
     status = Gtk.Label(xalign=0)
@@ -702,9 +866,7 @@ def main():
     actions.dictation = dictation
     bar.update()
 
-    win.add(outer)
     win.connect("key-press-event", on_key, actions)
-    win.connect("destroy", Gtk.main_quit)
     win.show_all()
     view.grab_focus()
 
@@ -736,7 +898,7 @@ def main():
 
 if __name__ == "__main__":
     try:
-        main()
+        main_list() if LIST else main()
     except SystemExit:
         raise  # 0 = submitted, 1 = cancelled: intended codes
     except Exception:

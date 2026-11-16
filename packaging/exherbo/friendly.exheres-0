@@ -18,7 +18,7 @@ PLATFORMS="~amd64"
 MYOPTIONS=""
 
 # NOTE: verify these atoms against your repositories — names/categories vary, and
-# gtk-layer-shell / wofi may not be in ::arbor (add them to a personal repo if so).
+# gtk-layer-shell may not be in ::arbor (add them to a personal repo if so).
 # claude-code (the `claude` CLI) is REQUIRED at runtime but is not in Exherbo:
 #   npm install -g @anthropic-ai/claude-code
 DEPENDENCIES="
@@ -29,7 +29,7 @@ DEPENDENCIES="
         gui/gtk-layer-shell
         sys-apps/wl-clipboard
     suggestion:
-        gui/wofi [[ description = [ Tone menu launcher (falls back to rofi/zenity) ] ]]
+        gui/wofi [[ description = [ Fallback menus when the compositor lacks layer-shell ] ]]
         x11-libs/libnotify [[ description = [ Desktop notifications ] ]]
 "
 
